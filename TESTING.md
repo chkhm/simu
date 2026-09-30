@@ -285,6 +285,19 @@ exercising the pluggable external random feed (`src/rng.rs`).
 | `env_feed_matches_standalone_splitmix64` | The env feed and a standalone `SplitMix64` produce the same samples |
 | `handles_share_one_feed` | All `EnvHandle` clones draw from one shared feed (draws interleave, not restart) |
 
+### tests/scheduling_order.rs — 5 tests
+
+Ordering guarantees models ported from SimPy lean on, pinned so a change to
+them is deliberate.
+
+| Test | What it verifies |
+|---|---|
+| `timeout_is_queued_at_first_poll_with_its_creation_deadline` | A timeout's deadline is fixed at creation, but it enters the queue at first poll: equal deadlines fire in awaiting order, not creation order |
+| `process_spawned_mid_run_starts_in_the_same_instant` | A child spawned by a running process runs in the same instant, before the clock moves |
+| `fired_event_resumes_waiters_before_a_same_instant_timeout` | `fire()` resumes waiters in the same ready-queue pass, ahead of a timeout already queued for that instant (SimPy would run the timeout first) |
+| `losing_timeout_wakes_the_process_spuriously_and_is_ignored` | The losing timeout of an `any_of!` wakes the process at its deadline; the timeout it awaits by then stays pending |
+| `losing_event_wakes_the_process_spuriously_and_is_ignored` | The losing event of an `any_of!` wakes the process when fired later; the event it awaits by then stays pending |
+
 ### src/rng.rs — 9 inline unit tests
 
 Inline `#[cfg(test)]` module covering the portable feed. The SplitMix64

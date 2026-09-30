@@ -35,7 +35,7 @@ tutorial/type doc-tests, re-sync the copies in `llms.txt` / `docs/simu-for-agent
 
 ```bash
 cargo build
-cargo test                        # 145 passing tests (126 unit + integration, 19 doc-tests)
+cargo test                        # 150 passing tests (131 unit + integration, 19 doc-tests)
 cargo test <test_name>            # run a single test
 cargo run --example hospital      # ER patient-flow simulation
 cargo run --example brewery       # brewery / process-automation simulation
@@ -80,9 +80,10 @@ simu/
 │   └── compare.rs        # SimPy-parity harness runner (JSON contract; not a showcase — see compare/)
 ├── benches/
 │   └── simulation.rs     # Criterion benchmarks
-└── tests/                # 13 integration files: timeout, event, resource, priority_resource,
+└── tests/                # 14 integration files: timeout, event, resource, priority_resource,
                           # container, combinator, process_handle, dropped_awaitable, system,
-                          # external_feed, same_tick_races, adversarial_scheduling, preemptive_resource
+                          # external_feed, same_tick_races, adversarial_scheduling, preemptive_resource,
+                          # scheduling_order
 ```
 
 `executor/` is private (`mod executor;`) with `pub(crate)` items — not user-facing.
