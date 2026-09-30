@@ -673,19 +673,43 @@ clippy-clean (`-D warnings`), and benchmarked.
 
 ## 6. Post-MVP Roadmap
 
-Listed in priority order:
+Listed in priority order; each item is a planned step of [PLAN.md](PLAN.md) (Steps 12–24), with
+its API sketch, semantics, tests and documentation:
 
-1. **`Interrupt`** — one process can interrupt another (e.g., emergency preemption).
-2. **`RealtimeEnvironment`** — synchronise simulated time to wall-clock time (for training/demos).
-3. **`Store` / `FilterStore`** — discrete-item queues with optional filter predicate.
-4. **GPU/CUDA acceleration** — batch evaluation of independent sub-simulations on GPU. Applicable
-   only when process logic can be expressed as data-parallel kernels (e.g., pure queuing networks).
-   Requires further design work; depends on CUDA Rust bindings maturity.
-5. **Per-process panic isolation** — wrap each process poll in `catch_unwind` so a panic terminates
-   only that process (surfaced as a simulation error) instead of unwinding the entire `run()`. See
-   [§4.3](#43-process-model).
+1. **Changing capacity** — `Resource::set_capacity(n)` while the simulation runs: growing grants
+   the head of the queue FIFO; shrinking below `in_use` lets holders keep their units and makes no
+   new grant until usage falls below capacity (servers on shift, lanes opening and closing).
+2. **`request_now` on `PriorityResource` and `PreemptiveResource`** — a request queued at the call,
+   ordered by `(priority, seq)` with `seq` taken at the call, with `is_granted()`, as
+   `Resource::request_now` (see [§4.5](#45-resource-model-mvp)).
+3. **Valued events** — `fire_with(value)` hands a clone of a value to every waiter, late waiters
+   included, as SimPy's `succeed(value)`; `EventTrigger` stays source-compatible.
+4. **`any_of!` names its winner** — the index of the first arm ready (lowest index on a tie in one
+   instant), and `Timeout::is_elapsed()`.
+5. **Cancelling lost timeouts and stale wakers** — a timeout dropped after losing a race leaves the
+   event queue without waking its process; a dropped event waiter's waker leaves the event's list.
+6. **`Interrupt`** — one process can interrupt another (e.g., emergency preemption), delivered at
+   the target's next await as `Err(Interrupted(cause))`; opt-in per await, since Rust has no
+   exceptions.
+7. **`Store` / `FilterStore` / `PriorityStore`** — discrete-item queues with optional filter
+   predicate or item priority, FIFO waiters, direct handoff within one instant.
+8. **`peek()` / `step()`** — the next event's time, and running exactly one event; `run_until`
+   stays equivalent to stepping while `peek() < t`.
+9. **`ProcessHandle::is_alive()`** — whether a process is still running, without awaiting it.
+10. **Per-process panic isolation** — wrap each process poll in `catch_unwind` so a panic terminates
+    only that process (surfaced as a simulation error) instead of unwinding the entire `run()`,
+    behind an opt-in policy. See [§4.3](#43-process-model).
+11. **No `Mutex` on every wake** — a single-threaded ready queue behind a custom waker, adopted only
+    if the benchmarks show a gain.
+12. **`RealtimeEnvironment`** — synchronise simulated time to wall-clock time (for training/demos),
+    with a factor and a strict mode, driven by `peek`/`step`.
+13. **GPU/CUDA acceleration** — batch evaluation of independent sub-simulations on GPU. Applicable
+    only when process logic can be expressed as data-parallel kernels (e.g., pure queuing networks).
+    Requires further design work; depends on CUDA Rust bindings maturity.
 
-**Delivered since MVP:** `PreemptiveResource` (cooperative-at-yield preemption — see [§4.5](#45-resource-model-mvp)).
+**Delivered since MVP:** `PreemptiveResource` (cooperative-at-yield preemption — see
+[§4.5](#45-resource-model-mvp)); `EventAwaitable::is_fired()`; `Resource::request_now()` with
+`ResourceRequest::is_granted()`; `run_until(t)` stopping before an event due at `t`.
 
 ---
 
