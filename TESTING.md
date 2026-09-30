@@ -114,6 +114,8 @@ All tests use `SimEnv::with_seed(0)` (or another fixed seed) for reproducibility
 | `multi_waiter_all_wake` | All waiters are woken simultaneously when trigger fires (`waiters.drain(..)`) |
 | `clone_shares_underlying_event` | Cloned `EventAwaitable` shares the same `Rc<RefCell<EventState>>` |
 | `envhandle_event_method` | `event()` called directly on `EnvHandle` (not via `SimEnv`) |
+| `is_fired_reports_the_trigger` | `is_fired()` is `false` before the fire and `true` after it, read without awaiting |
+| `is_fired_is_false_for_a_dropped_trigger` | A trigger dropped unfired leaves `is_fired()` `false` |
 
 ### tests/resource.rs — 6 tests
 

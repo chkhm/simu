@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `EventAwaitable::is_fired()` reports whether an event has fired without
+  awaiting it, e.g. to learn which arm of an `any_of!` race won.
+
 ### Fixed
 
 - `SimEnv::run_until(t)` no longer runs an event due exactly at `t`. Its

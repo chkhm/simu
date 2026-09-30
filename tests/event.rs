@@ -207,3 +207,40 @@ fn dropped_unfired_trigger_strands_waiter() {
     // The waiter never resolved.
     assert!(log.borrow().is_empty(), "waiter unexpectedly resolved: {:?}", log.borrow());
 }
+
+#[test]
+fn is_fired_reports_the_trigger() {
+    let mut env = SimEnv::with_seed(0);
+    let (trigger, signal) = env.event();
+    let observer = signal.clone();
+    let log = new_log();
+
+    let h = env.handle();
+    env.spawn(async move {
+        h.timeout(3.0).await;
+        trigger.fire();
+    });
+
+    // Polls the event without awaiting it, before and after the fire.
+    let (h, l) = (env.handle(), log.clone());
+    env.spawn(async move {
+        for _ in 0..2 {
+            h.timeout(2.0).await;
+            l.borrow_mut()
+                .push(format!("{}:{}", h.now(), observer.is_fired()));
+        }
+    });
+
+    assert!(!signal.is_fired());
+    env.run();
+    assert!(signal.is_fired());
+    assert_eq!(*log.borrow(), vec!["2:false", "4:true"]);
+}
+
+#[test]
+fn is_fired_is_false_for_a_dropped_trigger() {
+    let env = SimEnv::with_seed(0);
+    let (trigger, signal) = env.event();
+    drop(trigger);
+    assert!(!signal.is_fired());
+}

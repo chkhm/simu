@@ -31,6 +31,7 @@ handle.rng() -> impl RngCore + '_        // short borrow — never hold across .
 let (trigger, awaitable) = env.event();
 awaitable.clone().await;                 // Clone = multi-waiter; Future<Output = ()>
 trigger.fire();                          // consumes self; latches for late awaiters
+awaitable.is_fired()     -> bool          // has the trigger fired? (no await)
 ```
 
 ## Resources (all `Clone` — clones share one pool; all `!Send + !Sync`)

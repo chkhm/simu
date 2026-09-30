@@ -211,6 +211,9 @@ all are woken when `trigger.fire()` is called.
 
 **`EventTrigger::fire` consumes `self`** — a trigger can only be fired once.
 
+**`EventAwaitable::is_fired`** reports whether the trigger has fired, without awaiting — e.g. to
+learn which arm of an `any_of!` race won.
+
 **Combinators** `AnyOf` and `AllOf` compose any `Future<Output = ()>` futures:
 
 ```rust

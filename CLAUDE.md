@@ -35,7 +35,7 @@ tutorial/type doc-tests, re-sync the copies in `llms.txt` / `docs/simu-for-agent
 
 ```bash
 cargo build
-cargo test                        # 151 passing tests (132 unit + integration, 19 doc-tests)
+cargo test                        # 154 passing tests (134 unit + integration, 20 doc-tests)
 cargo test <test_name>            # run a single test
 cargo run --example hospital      # ER patient-flow simulation
 cargo run --example brewery       # brewery / process-automation simulation
