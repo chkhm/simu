@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `EventAwaitable::is_fired()` reports whether an event has fired without
   awaiting it, e.g. to learn which arm of an `any_of!` race won.
+- `Resource::request_now()` takes a place in the queue at the call, as SimPy's
+  `resource.request()` does, rather than at the first poll: units are handed
+  over in the order requests were made, awaited or not.
+  `ResourceRequest::is_granted()` says whether a request already holds a unit.
 
 ### Fixed
 

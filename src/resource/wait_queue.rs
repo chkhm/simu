@@ -22,18 +22,49 @@
 //! drop-cancel invariants (see `SPEC.md §4.7`) in a single place rather than
 //! copied across every resource type.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::rc::Rc;
 use std::task::Waker;
+
+/// A waker a queued request can refill on each poll. Empty for a request that
+/// was queued when it was made and has not been polled yet
+/// (`Resource::request_now`): a grant then only sets its `granted` flag, and
+/// its first poll finds it.
+pub(crate) type WakerSlot = Rc<RefCell<Option<Waker>>>;
+
+/// How a parked waiter is woken when it is granted a unit.
+enum Wakeup {
+    /// Parked by its first poll, with the waker it had then. The common case,
+    /// kept allocation-free.
+    Waker(Waker),
+    /// Queued at the call: the slot its request keeps current.
+    Slot(WakerSlot),
+}
+
+impl Wakeup {
+    fn wake(self) {
+        match self {
+            Wakeup::Waker(waker) => waker.wake(),
+            Wakeup::Slot(slot) => {
+                // Take the waker before waking so the slot is not borrowed
+                // while the executor runs.
+                let waker = slot.take();
+                if let Some(waker) = waker {
+                    waker.wake();
+                }
+            }
+        }
+    }
+}
 
 /// One suspended requester parked in a [`WaitQueue`].
 struct Entry<K> {
     key: K,
     /// Monotonic tie-breaker guaranteeing FIFO order within equal keys.
     seq: u64,
-    waker: Waker,
+    wakeup: Wakeup,
     /// Shared with the owning request future. Its `Drop` sets this to `true`
     /// when abandoned before being granted; [`WaitQueue::release`] skips such
     /// entries so live waiters behind them are still served.
@@ -145,12 +176,29 @@ impl<K: Ord> WaitQueue<K> {
         canceled: Rc<Cell<bool>>,
         granted: Rc<Cell<bool>>,
     ) {
+        self.park(key, Wakeup::Waker(waker), canceled, granted);
+    }
+
+    /// Park a waiter whose waker is kept in a slot its request can refill on
+    /// each poll — or leave empty until then, for a request queued when it was
+    /// made. Same once-per-request rule as [`register`](WaitQueue::register).
+    pub(crate) fn register_slot(
+        &mut self,
+        key: K,
+        slot: WakerSlot,
+        canceled: Rc<Cell<bool>>,
+        granted: Rc<Cell<bool>>,
+    ) {
+        self.park(key, Wakeup::Slot(slot), canceled, granted);
+    }
+
+    fn park(&mut self, key: K, wakeup: Wakeup, canceled: Rc<Cell<bool>>, granted: Rc<Cell<bool>>) {
         let seq = self.next_seq;
         self.next_seq += 1;
         self.waiters.push(Entry {
             key,
             seq,
-            waker,
+            wakeup,
             canceled,
             granted,
         });
@@ -173,7 +221,7 @@ impl<K: Ord> WaitQueue<K> {
         while let Some(entry) = self.waiters.pop() {
             if !entry.canceled.get() {
                 entry.granted.set(true);
-                entry.waker.wake();
+                entry.wakeup.wake();
                 return; // unit transferred; `in_use` deliberately unchanged
             }
         }
@@ -337,6 +385,25 @@ mod tests {
         assert_eq!(s_live.load(AtomicOrdering::SeqCst), 1);
         assert!(g_live.get());
         assert_eq!(q.in_use(), 1); // transferred, still in use
+    }
+
+    #[test]
+    fn release_grants_a_waiter_with_no_waker_yet() {
+        // A request queued at creation holds its place with an empty waker
+        // slot; a release hands it the unit without waking anyone.
+        let mut q: WaitQueue<()> = WaitQueue::new(1);
+        assert!(q.try_acquire());
+
+        let slot: WakerSlot = Rc::new(RefCell::new(None));
+        let granted = live();
+        q.register_slot((), Rc::clone(&slot), live(), Rc::clone(&granted));
+        assert_eq!(q.live_waiters(), 1);
+
+        q.release();
+        assert!(granted.get());
+        assert!(slot.borrow().is_none());
+        assert_eq!(q.in_use(), 1); // transferred, still in use
+        assert_eq!(q.live_waiters(), 0);
     }
 
     #[test]

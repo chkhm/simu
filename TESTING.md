@@ -288,6 +288,20 @@ exercising the pluggable external random feed (`src/rng.rs`).
 | `env_feed_matches_standalone_splitmix64` | The env feed and a standalone `SplitMix64` produce the same samples |
 | `handles_share_one_feed` | All `EnvHandle` clones draw from one shared feed (draws interleave, not restart) |
 
+### tests/resource_request_now.rs — 7 tests
+
+`Resource::request_now` (queued at the call) and `ResourceRequest::is_granted`.
+
+| Test | What it verifies |
+|---|---|
+| `request_now_keeps_its_place_before_it_is_awaited` | A request made while the unit is held is handed it before a later, promptly awaited request; a lazy `request()` made at the same moment is not |
+| `requests_are_served_in_the_order_they_were_made` | Requests awaited in the reverse order they were made are served in the order made |
+| `is_granted_follows_the_handoff` | `is_granted()` is `true` for a request granted at the call, and turns `true` for a queued one when a release hands it the unit, before it is awaited |
+| `lazy_request_reports_not_granted_until_polled` | An unpolled `request()` holds nothing, even with a unit free |
+| `dropping_a_queued_request_now_withdraws_it` | Dropping a queued, unawaited request removes it from the queue; the next waiter is served |
+| `dropping_a_granted_request_now_passes_the_unit_on` | Dropping a granted, unawaited request passes the unit to the next waiter |
+| `losing_request_now_in_any_of_is_withdrawn` | A `request_now` dropped with a losing `any_of!` arm leaves the queue |
+
 ### tests/scheduling_order.rs — 5 tests
 
 Ordering guarantees models ported from SimPy lean on, pinned so a change to

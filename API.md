@@ -40,6 +40,8 @@ awaitable.is_fired()     -> bool          // has the trigger fired? (no await)
 // FIFO pool
 let r = Resource::new(capacity);               // panics if capacity == 0
 let guard = r.request().await;                 // ResourceGuard; unit released on drop
+let req = r.request_now();                     // queues at the call (SimPy), not at first poll
+req.is_granted()     -> bool                   // holds a unit already? (no await)
 r.capacity() / r.in_use() / r.queue_len() -> usize
 
 // Priority pool (lower u32 = higher priority; FIFO within a level)

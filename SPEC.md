@@ -285,7 +285,13 @@ impl Resource {
 
     /// Request one unit. Suspends the calling process if none are available (FIFO).
     /// Returns a guard that releases the unit when dropped.
+    /// The request joins the queue at its first poll.
     pub fn request(&self) -> ResourceRequest;
+
+    /// Request one unit, joining the queue at the call (SimPy's `request()`):
+    /// granted at once if a unit is free, else served in the order requests
+    /// were made, awaited or not. Dropping it unawaited withdraws it.
+    pub fn request_now(&self) -> ResourceRequest;
 
     /// Current number of units in use.
     pub fn in_use(&self) -> usize;
@@ -297,6 +303,11 @@ impl Resource {
     /// `PriorityResource` and `PreemptiveResource` expose the same accessor;
     /// `Container` exposes `get_queue_len()` / `put_queue_len()`.
     pub fn queue_len(&self) -> usize;
+}
+
+impl ResourceRequest {
+    /// Whether a unit is held for this request (awaiting it will not suspend).
+    pub fn is_granted(&self) -> bool;
 }
 ```
 
@@ -533,6 +544,14 @@ flag. On first poll the future enqueues a waiter; on subsequent polls the
 returns `Ready` when the wake cascade explicitly marks it done — a
 spurious re-poll (from an unrelated waker) cannot steal capacity ahead of an
 earlier waiter and thereby violate FIFO ordering.
+
+`Resource::request_now` registers at the call instead, before the future has a
+waker: its queue entry keeps the waker in a slot (`WakerSlot`) that starts empty
+and that each poll refills (a lazily registered waiter keeps its waker inline,
+with no slot allocation). A release that grants such an entry sets its
+`granted` flag and wakes nobody if the slot is still empty; the request's first
+poll then finds the grant. A registered `request_now` never re-tries the pool on
+a poll, so its place in the queue is the only way it is served.
 
 ### Head-of-line FIFO on the immediate path (`Container`)
 
