@@ -221,7 +221,7 @@ impl SimEnv {
                 state
                     .event_queue
                     .peek()
-                    .is_none_or(|Reverse(e)| e.time > until)
+                    .is_none_or(|Reverse(e)| e.time >= until)
             };
 
             if should_stop {

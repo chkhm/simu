@@ -96,6 +96,7 @@ All tests use `SimEnv::with_seed(0)` (or another fixed seed) for reproducibility
 | `single_timeout_advances_time` | `env.now()` advances correctly after a timeout |
 | `multiple_timeouts_fire_in_time_order` | Events fire in time order, not spawn order |
 | `run_until_stops_at_boundary` | `run_until(t)` stops at `t`, pending events beyond `t` do not fire |
+| `run_until_does_not_run_an_event_at_the_boundary` | An event due exactly at `t` does not run under `run_until(t)`; a later `run()` runs it at `t` |
 | `zero_delay_timeout` | `timeout(0.0)` still enters the queue; process completes with `env.now() == 0.0` |
 | `deterministic_tie_breaking` | Two processes with equal delay complete in spawn order (via `seq_counter`) |
 | `simenv_new_creates_valid_env` | `SimEnv::new()` (entropy-seeded) produces a usable environment |
