@@ -96,6 +96,7 @@ All tests use `SimEnv::with_seed(0)` (or another fixed seed) for reproducibility
 | `single_timeout_advances_time` | `env.now()` advances correctly after a timeout |
 | `multiple_timeouts_fire_in_time_order` | Events fire in time order, not spawn order |
 | `run_until_stops_at_boundary` | `run_until(t)` stops at `t`, pending events beyond `t` do not fire |
+| `run_until_does_not_run_an_event_at_the_boundary` | An event due exactly at `t` does not run under `run_until(t)`; a later `run()` runs it at `t` |
 | `zero_delay_timeout` | `timeout(0.0)` still enters the queue; process completes with `env.now() == 0.0` |
 | `deterministic_tie_breaking` | Two processes with equal delay complete in spawn order (via `seq_counter`) |
 | `simenv_new_creates_valid_env` | `SimEnv::new()` (entropy-seeded) produces a usable environment |
@@ -113,6 +114,8 @@ All tests use `SimEnv::with_seed(0)` (or another fixed seed) for reproducibility
 | `multi_waiter_all_wake` | All waiters are woken simultaneously when trigger fires (`waiters.drain(..)`) |
 | `clone_shares_underlying_event` | Cloned `EventAwaitable` shares the same `Rc<RefCell<EventState>>` |
 | `envhandle_event_method` | `event()` called directly on `EnvHandle` (not via `SimEnv`) |
+| `is_fired_reports_the_trigger` | `is_fired()` is `false` before the fire and `true` after it, read without awaiting |
+| `is_fired_is_false_for_a_dropped_trigger` | A trigger dropped unfired leaves `is_fired()` `false` |
 
 ### tests/resource.rs — 6 tests
 
@@ -284,6 +287,33 @@ exercising the pluggable external random feed (`src/rng.rs`).
 | `set_seed_restarts_the_stream` | `SimEnv::set_seed` reseeds the source, restarting its stream |
 | `env_feed_matches_standalone_splitmix64` | The env feed and a standalone `SplitMix64` produce the same samples |
 | `handles_share_one_feed` | All `EnvHandle` clones draw from one shared feed (draws interleave, not restart) |
+
+### tests/resource_request_now.rs — 7 tests
+
+`Resource::request_now` (queued at the call) and `ResourceRequest::is_granted`.
+
+| Test | What it verifies |
+|---|---|
+| `request_now_keeps_its_place_before_it_is_awaited` | A request made while the unit is held is handed it before a later, promptly awaited request; a lazy `request()` made at the same moment is not |
+| `requests_are_served_in_the_order_they_were_made` | Requests awaited in the reverse order they were made are served in the order made |
+| `is_granted_follows_the_handoff` | `is_granted()` is `true` for a request granted at the call, and turns `true` for a queued one when a release hands it the unit, before it is awaited |
+| `lazy_request_reports_not_granted_until_polled` | An unpolled `request()` holds nothing, even with a unit free |
+| `dropping_a_queued_request_now_withdraws_it` | Dropping a queued, unawaited request removes it from the queue; the next waiter is served |
+| `dropping_a_granted_request_now_passes_the_unit_on` | Dropping a granted, unawaited request passes the unit to the next waiter |
+| `losing_request_now_in_any_of_is_withdrawn` | A `request_now` dropped with a losing `any_of!` arm leaves the queue |
+
+### tests/scheduling_order.rs — 5 tests
+
+Ordering guarantees models ported from SimPy lean on, pinned so a change to
+them is deliberate.
+
+| Test | What it verifies |
+|---|---|
+| `timeout_is_queued_at_first_poll_with_its_creation_deadline` | A timeout's deadline is fixed at creation, but it enters the queue at first poll: equal deadlines fire in awaiting order, not creation order |
+| `process_spawned_mid_run_starts_in_the_same_instant` | A child spawned by a running process runs in the same instant, before the clock moves |
+| `fired_event_resumes_waiters_before_a_same_instant_timeout` | `fire()` resumes waiters in the same ready-queue pass, ahead of a timeout already queued for that instant (SimPy would run the timeout first) |
+| `losing_timeout_wakes_the_process_spuriously_and_is_ignored` | The losing timeout of an `any_of!` wakes the process at its deadline; the timeout it awaits by then stays pending |
+| `losing_event_wakes_the_process_spuriously_and_is_ignored` | The losing event of an `any_of!` wakes the process when fired later; the event it awaits by then stays pending |
 
 ### src/rng.rs — 9 inline unit tests
 

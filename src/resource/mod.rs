@@ -17,7 +17,7 @@ pub mod priority;
 pub use priority::{PriorityResource, PriorityResourceGuard, PriorityResourceRequest};
 
 pub(crate) mod wait_queue;
-use wait_queue::WaitQueue;
+use wait_queue::{WaitQueue, WakerSlot};
 
 /// A cloneable handle to a capacity-limited resource pool.
 ///
@@ -87,6 +87,10 @@ impl Resource {
     /// otherwise suspends the calling process until one is released.
     ///
     /// The returned [`ResourceGuard`] releases the unit when dropped.
+    ///
+    /// The request joins the queue when it is first polled, not when this is
+    /// called; use [`request_now`](Resource::request_now) to take a place in
+    /// the queue at the call.
     #[must_use = "futures do nothing unless awaited"]
     pub fn request(&self) -> ResourceRequest {
         ResourceRequest {
@@ -95,6 +99,76 @@ impl Resource {
             consumed: false,
             canceled: Rc::new(Cell::new(false)),
             granted: Rc::new(Cell::new(false)),
+            slot: None,
+        }
+    }
+
+    /// Request one unit, taking a place in the queue **at the call**, as
+    /// SimPy's `resource.request()` does, rather than at the first poll.
+    ///
+    /// A free unit is granted at once; otherwise the request queues behind
+    /// the requests made before it, whether or not those have been awaited
+    /// yet. Units are handed over in the order requests were made, and a
+    /// request can be granted before it is ever awaited:
+    /// [`is_granted`](ResourceRequest::is_granted) says whether it holds one.
+    /// Awaiting it yields the [`ResourceGuard`]; dropping it unawaited withdraws
+    /// it from the queue, or passes a unit it was granted on to the next waiter.
+    ///
+    /// Useful when a process asks for several resources at once and waits for
+    /// whichever it gets first, or needs to know whether it would have to wait.
+    ///
+    /// ```
+    /// use simu::{Resource, SimEnv};
+    ///
+    /// let mut env = SimEnv::with_seed(0);
+    /// let desk = Resource::new(1);
+    ///
+    /// let first = desk.request_now(); // free: granted at the call
+    /// let second = desk.request_now(); // queued behind `first`
+    /// assert!(first.is_granted());
+    /// assert!(!second.is_granted());
+    /// assert_eq!(desk.queue_len(), 1);
+    ///
+    /// let h = env.handle();
+    /// env.spawn(async move {
+    ///     let guard = first.await;
+    ///     h.timeout(4.0).await;
+    ///     drop(guard); // hands the unit to `second`, which is not awaited yet
+    ///     assert!(second.is_granted());
+    ///     let _guard = second.await; // resolves at once
+    ///     assert_eq!(h.now(), 4.0);
+    /// });
+    /// env.run();
+    /// ```
+    #[must_use = "dropping the request withdraws it from the queue"]
+    pub fn request_now(&self) -> ResourceRequest {
+        let canceled = Rc::new(Cell::new(false));
+        let granted = Rc::new(Cell::new(false));
+        let slot = {
+            let mut state = self.state.borrow_mut();
+            if state.try_acquire() {
+                granted.set(true);
+                None
+            } else {
+                // Empty until the first poll: a grant before then only sets
+                // `granted`.
+                let slot = WakerSlot::default();
+                state.register_slot(
+                    (),
+                    Rc::clone(&slot),
+                    Rc::clone(&canceled),
+                    Rc::clone(&granted),
+                );
+                Some(slot)
+            }
+        };
+        ResourceRequest {
+            state: Rc::clone(&self.state),
+            registered: slot.is_some(),
+            consumed: false,
+            canceled,
+            granted,
+            slot,
         }
     }
 
@@ -118,7 +192,7 @@ impl Resource {
     }
 }
 
-/// Future returned by [`Resource::request`].
+/// Future returned by [`Resource::request`] and [`Resource::request_now`].
 ///
 /// Resolves to a [`ResourceGuard`] once a unit is acquired.
 pub struct ResourceRequest {
@@ -136,6 +210,23 @@ pub struct ResourceRequest {
     /// Shared with the queue entry; set to `true` by `WaitQueue::release` when
     /// the unit is handed directly to this request. Checked first in `poll`.
     granted: Rc<Cell<bool>>,
+    /// For a request queued at the call (`request_now`): the queue entry's
+    /// waker slot, which each poll refills with the current waker.
+    slot: Option<WakerSlot>,
+}
+
+impl ResourceRequest {
+    /// Whether a unit is held for this request, so that awaiting it resolves
+    /// without suspending.
+    ///
+    /// True from the moment a unit is granted to it: at the call for a
+    /// [`request_now`](Resource::request_now) that found one free, or when a
+    /// release hands one over. A [`request`](Resource::request) that has not
+    /// been polled holds nothing, so it reports `false` even if a unit is free.
+    #[must_use]
+    pub fn is_granted(&self) -> bool {
+        self.granted.get()
+    }
 }
 
 impl std::fmt::Debug for ResourceRequest {
@@ -158,6 +249,15 @@ impl Future for ResourceRequest {
             return Poll::Ready(ResourceGuard {
                 state: Rc::clone(&self.state),
             });
+        }
+        // Queued at the call: keep the entry's waker current, and wait for the
+        // handoff. Never re-try the pool, so the queue order stands.
+        if let Some(slot) = &self.slot {
+            let mut slot = slot.borrow_mut();
+            if !slot.as_ref().is_some_and(|w| w.will_wake(cx.waker())) {
+                *slot = Some(cx.waker().clone());
+            }
+            return Poll::Pending;
         }
         // Drop the borrow before writing self.registered to satisfy the borrow checker.
         let acquired = {

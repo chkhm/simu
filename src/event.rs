@@ -106,6 +106,42 @@ impl EventTrigger {
     }
 }
 
+impl EventAwaitable {
+    /// Whether the paired [`EventTrigger`] has fired.
+    ///
+    /// Lets a process branch on an event without awaiting it — for example,
+    /// to learn which arm of an [`any_of!`](crate::any_of) race won, or to
+    /// skip a wait for something that has already happened. Once `true`, it
+    /// stays `true`.
+    ///
+    /// ```
+    /// use simu::{any_of, SimEnv};
+    ///
+    /// let mut env = SimEnv::with_seed(0);
+    /// let (trigger, arrived) = env.event();
+    ///
+    /// let h = env.handle();
+    /// env.spawn(async move {
+    ///     h.timeout(2.0).await;
+    ///     trigger.fire();
+    /// });
+    ///
+    /// let h = env.handle();
+    /// env.spawn(async move {
+    ///     assert!(!arrived.is_fired());
+    ///     any_of![h.timeout(5.0), arrived.clone()].await;
+    ///     assert!(arrived.is_fired()); // the event won the race, at t = 2
+    ///     assert_eq!(h.now(), 2.0);
+    /// });
+    ///
+    /// env.run();
+    /// ```
+    #[must_use]
+    pub fn is_fired(&self) -> bool {
+        self.state.borrow().fired
+    }
+}
+
 impl Future for EventAwaitable {
     type Output = ();
 

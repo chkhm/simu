@@ -291,3 +291,29 @@ fn zero_timeout_delay_is_allowed() {
     env.run();
     assert_eq!(*log.borrow(), vec!["0"]);
 }
+
+/// An event due exactly at the boundary does not run: `run_until(t)` behaves as
+/// SimPy's `run(until=t)`, stopping before anything scheduled at `t`. A later
+/// `run()` resumes with it, at `t`.
+#[test]
+fn run_until_does_not_run_an_event_at_the_boundary() {
+    let mut env = SimEnv::with_seed(0);
+    let log = new_log();
+
+    for delay in [5.0_f64, 10.0] {
+        let h = env.handle();
+        let log2 = log.clone();
+        env.spawn(async move {
+            h.timeout(delay).await;
+            log2.borrow_mut().push(format!("{}", h.now()));
+        });
+    }
+
+    env.run_until(10.0);
+    assert_eq!(env.now(), 10.0);
+    assert_eq!(*log.borrow(), vec!["5"]);
+
+    env.run();
+    assert_eq!(env.now(), 10.0);
+    assert_eq!(*log.borrow(), vec!["5", "10"]);
+}

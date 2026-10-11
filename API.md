@@ -31,6 +31,7 @@ handle.rng() -> impl RngCore + '_        // short borrow — never hold across .
 let (trigger, awaitable) = env.event();
 awaitable.clone().await;                 // Clone = multi-waiter; Future<Output = ()>
 trigger.fire();                          // consumes self; latches for late awaiters
+awaitable.is_fired()     -> bool          // has the trigger fired? (no await)
 ```
 
 ## Resources (all `Clone` — clones share one pool; all `!Send + !Sync`)
@@ -39,6 +40,8 @@ trigger.fire();                          // consumes self; latches for late awai
 // FIFO pool
 let r = Resource::new(capacity);               // panics if capacity == 0
 let guard = r.request().await;                 // ResourceGuard; unit released on drop
+let req = r.request_now();                     // queues at the call (SimPy), not at first poll
+req.is_granted()     -> bool                   // holds a unit already? (no await)
 r.capacity() / r.in_use() / r.queue_len() -> usize
 
 // Priority pool (lower u32 = higher priority; FIFO within a level)

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `EventAwaitable::is_fired()` reports whether an event has fired without
+  awaiting it, e.g. to learn which arm of an `any_of!` race won.
+- `Resource::request_now()` takes a place in the queue at the call, as SimPy's
+  `resource.request()` does, rather than at the first poll: units are handed
+  over in the order requests were made, awaited or not.
+  `ResourceRequest::is_granted()` says whether a request already holds a unit.
+
+### Fixed
+
+- `SimEnv::run_until(t)` no longer runs an event due exactly at `t`. Its
+  documentation (and SimPy's `run(until=t)`) already said so, but the loop
+  stopped only on events strictly after `t`. A model that relied on the old
+  behaviour can run until the next representable time, `t.next_up()` (Rust 1.86+).
+
 ## [0.1.0] - 2026-08-23
 
 Initial release, published as [`simu-des`](https://crates.io/crates/simu-des)
