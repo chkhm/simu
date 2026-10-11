@@ -1,12 +1,12 @@
 # simu vs. SimPy comparison report
 
-_Generated 2026-06-28T18:30:04_
+_Generated 2026-10-05T20:17:31_
 
 ## Correctness: simu vs. SimPy
 
 Both tools draw from the same portable feed (SplitMix64 + shared transforms), seeded identically per replication.
 
-- **Exact mode** (mm1, mmc, priority, container): every metric must agree **seed-by-seed** within 1e-9 relative; FAIL otherwise.
+- **Exact mode** (mm1, mmc, priority, container, coffee): every metric must agree **seed-by-seed** within 1e-9 relative; FAIL otherwise.
 - **Distributional mode** (hospital): FAIL = statistically significant (t-test p < 0.01) **and** material (relative mean difference > 5%).
 - **Known exceptions** (marked `known ⚠`): accepted, documented divergences that are surfaced but do **not** fail the run — currently `hospital.early_discharged` (eviction-handoff event ordering; see README). The harness exits non-zero only on a non-allowlisted FAIL.
 
@@ -51,6 +51,18 @@ _Analytical mean wait (Erlang C) = **1.778**; simu = 1.685, simpy = 1.685._
 | mean_wait_small | 30.93 ± 1.6 | 30.93 ± 1.6 | 0.00% | 1.8e-15 | 1.000 | 1.000 | pass |
 | served | 942.4 ± 2.4 | 942.4 ± 2.4 | 0.00% | 0.0e+00 | 1.000 | 1.000 | pass |
 
+### coffee  (✅ PASS, exact) — 200 seeds × 1000 arrivals, λ=1.7, μ=0.5, c=4
+
+| metric | simu mean | simpy mean | rel.diff | max/seed Δ | t-test p | KS p | result |
+|---|---|---|---|---|---|---|---|
+| barista_utilization | 0.8366 ± 0.0032 | 0.8366 ± 0.0032 | 0.00% | 2.4e-15 | 1.000 | 1.000 | pass |
+| mean_time_in_shop | 5.332 ± 0.12 | 5.332 ± 0.12 | 0.00% | 2.8e-15 | 1.000 | 1.000 | pass |
+| mean_wait_barista | 2.382 ± 0.11 | 2.382 ± 0.11 | 0.00% | 2.8e-15 | 1.000 | 1.000 | pass |
+| mean_wait_cashier | 0.2688 ± 0.0031 | 0.2688 ± 0.0031 | 0.00% | 2.8e-16 | 1.000 | 1.000 | pass |
+| mean_wait_milk | 0.1271 ± 0.0068 | 0.1271 ± 0.0068 | 0.00% | 2.2e-16 | 1.000 | 1.000 | pass |
+| reneged | 42.34 ± 0.55 | 42.34 ± 0.55 | 0.00% | 0.0e+00 | 1.000 | 1.000 | pass |
+| served | 957.7 ± 0.55 | 957.7 ± 0.55 | 0.00% | 0.0e+00 | 1.000 | 1.000 | pass |
+
 ### hospital  (✅ PASS (1 known exception), distributional) — 200 seeds × 1000 arrivals, λ=0.9, μ=1.0, c=1
 
 | metric | simu mean | simpy mean | rel.diff | max/seed Δ | t-test p | KS p | result |
@@ -68,27 +80,38 @@ _Note: differences here are **expected**, not a bug. Both engines draw the ident
 
 ## Performance: simu vs. SimPy
 
-Queue models run one large replication (`seeds=1`, large `n`); the hospital model ignores `n` and runs a fixed-duration scenario, so its workload is scaled by replication count (`seeds`). The `events` column is the common, model-specific event tally and is identical across the two tools by construction.
+Each model runs one large replication (`seeds=1`, large `n`). The coffee model is the coffee shop (4 baristas, 2 cashiers, reneging, milk fridge). The `events` column is the common, model-specific event tally and is identical across the two tools by construction.
 
 | model | workload | events | tool | wall (s) | events/sec | peak RSS (MB) |
 |---|---|---|---|---|---|---|
-| mm1 | 100,000 arrivals | 200,000 | simu | 0.042 | 4,765,815 | 4.2 |
-| mm1 | 100,000 arrivals | 200,000 | simpy | 0.477 | 419,541 | 41.0 |
-| mmc | 100,000 arrivals | 200,000 | simu | 0.041 | 4,919,061 | 4.2 |
-| mmc | 100,000 arrivals | 200,000 | simpy | 0.487 | 411,007 | 40.9 |
-| priority | 100,000 arrivals | 200,000 | simu | 0.045 | 4,424,860 | 4.4 |
-| priority | 100,000 arrivals | 200,000 | simpy | 0.578 | 346,222 | 34.5 |
-| hospital | 2,000 seeds | 196,318 | simu | 0.104 | 1,894,906 | 5.2 |
-| hospital | 2,000 seeds | 196,318 | simpy | 1.415 | 138,718 | 25.5 |
+| mm1 | 100,000 arrivals | 200,000 | simu | 0.039 | 5,137,503 | 9.3 |
+| mm1 | 100,000 arrivals | 200,000 | simpy | 0.488 | 410,251 | 48.2 |
+| mmc | 100,000 arrivals | 200,000 | simu | 0.038 | 5,207,356 | 9.3 |
+| mmc | 100,000 arrivals | 200,000 | simpy | 0.500 | 399,749 | 48.2 |
+| priority | 100,000 arrivals | 200,000 | simu | 0.041 | 4,824,082 | 8.6 |
+| priority | 100,000 arrivals | 200,000 | simpy | 0.598 | 334,655 | 40.7 |
+| coffee | 100,000 arrivals | 200,000 | simu | 0.069 | 2,898,983 | 12.3 |
+| coffee | 100,000 arrivals | 200,000 | simpy | 1.234 | 162,082 | 59.0 |
 
 | model | simu speedup × | simu memory advantage × |
 |---|---|---|
-| mm1 | 11.4× | 9.8× |
-| mmc | 12.0× | 9.8× |
-| priority | 12.8× | 7.9× |
-| hospital | 13.7× | 4.9× |
+| mm1 | 12.5× | 5.2× |
+| mmc | 13.0× | 5.2× |
+| priority | 14.4× | 4.7× |
+| coffee | 17.9× | 4.8× |
 
-_Note: all seeds run **sequentially** in a single process for both tools — these figures measure single-thread engine efficiency, not parallelism. (simu can parallelize independent seeds across cores via `monte_carlo::run`, which CPython's GIL effectively denies SimPy, but that is intentionally not exercised here.) For the **hospital** row the memory advantage narrows as the seed count grows: simu accumulates one small result record per seed (linear), while SimPy's ~24 MB interpreter baseline dominates and masks its own per-seed growth — so the *ratio* shrinks even though simu's engine memory stays small. The per-event speedup is unaffected and stays in the same band as the other models._
+_Note: all seeds run **sequentially** in a single process for both tools — these figures measure single-thread engine efficiency, not parallelism. (simu can parallelize independent seeds across cores via `monte_carlo::run`, which CPython's GIL effectively denies SimPy, but that is intentionally not exercised here.)_
+
+## Scaling: coffee shop from 1k to 1M customers
+
+One replication of the coffee model (4 baristas, λ=1.7/min, mean prep 2 min) at growing day lengths. Both engines should scale linearly (constant events/sec); the speedup column shows whether simu's advantage holds at every size.
+
+| customers | events | simu wall (s) | SimPy wall (s) | simu events/sec | SimPy events/sec | simu peak RSS (MB) | SimPy peak RSS (MB) | speedup × |
+|---|---|---|---|---|---|---|---|---|
+| 1,000 | 2,000 | 0.0007 | 0.013 | 2,718,932 | 157,022 | 2.0 | 31.9 | 17.3× |
+| 10,000 | 20,000 | 0.0070 | 0.122 | 2,854,883 | 163,459 | 2.9 | 34.4 | 17.5× |
+| 100,000 | 200,000 | 0.0682 | 1.246 | 2,933,232 | 160,473 | 12.3 | 59.0 | 18.3× |
+| 1,000,000 | 2,000,000 | 0.6756 | 12.493 | 2,960,288 | 160,095 | 100.4 | 333.9 | 18.5× |
 
 ## Monte Carlo: parallel seeds (simu) vs sequential (SimPy)
 
@@ -96,8 +119,8 @@ simu fans independent replications across threads via `monte_carlo::run` (rayon;
 
 | model | replications | simu seq (s) | simu ‖ (s) | SimPy seq (s) | simu parallel speedup × | simu ‖ vs SimPy × |
 |---|---|---|---|---|---|---|
-| hospital | 2,000 seeds | 0.102 | 0.033 | 1.423 | 3.1× | 43.1× |
-| mm1 | 300 seeds × 4,000 | 0.554 | 0.242 | 5.691 | 2.3× | 23.5× |
+| coffee | 1,000 seeds × 2,000 | 1.518 | 0.587 | 25.087 | 2.6× | 42.8× |
+| mm1 | 300 seeds × 4,000 | 0.533 | 0.245 | 6.337 | 2.2× | 25.9× |
 
 _The **simu ‖ vs SimPy** column is the headline cross-tool advantage when replications run in parallel: roughly the single-thread per-event speedup times the parallel scaling (which saturates near the ~10× logical-core count and is trimmed by per-run setup and memory bandwidth). This is the axis SimPy cannot follow — its replications are GIL-serialised._
 

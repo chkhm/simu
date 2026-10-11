@@ -128,6 +128,16 @@ Start with the four **intro examples** (one per tutorial chapter, each under 60
 lines): `intro_car`, `intro_charging`, `intro_cancellation`,
 `intro_charging_station`.
 
+```bash
+cargo run --example coffee_shop --release
+```
+
+A café answering "how many baristas do we need?": cashiers (`Resource`), impatient walk-ins who
+leave the queue (`any_of!` against a patience timeout), baristas who serve walk-ins ahead of
+mobile orders (`PriorityResource`), and a milk fridge (`Container`). It runs 200 parallel days per
+staffing level. This is the readable twin of the `coffee` SimPy-parity benchmark. Walkthrough:
+[`examples/coffee_shop.md`](examples/coffee_shop.md).
+
 Beyond those, three end-to-end examples demonstrate every public primitive in different domains. All run 10
 parallel Monte Carlo simulations, write per-run logs, and print a summary table to stdout.
 See [`examples/hospital.md`](examples/hospital.md), [`examples/brewery.md`](examples/brewery.md),

@@ -33,6 +33,8 @@ def main():
     if not a.no_perf:
         perf = run_performance.run_all(scale=a.perf_scale)
         sections.append(run_performance.render_markdown(perf))
+        scaling = run_performance.run_all_scaling(scale=a.perf_scale)
+        sections.append(run_performance.render_scaling(scaling))
         montecarlo = run_performance.run_all_montecarlo(scale=a.perf_scale)
         sections.append(run_performance.render_montecarlo(montecarlo))
 

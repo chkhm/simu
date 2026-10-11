@@ -33,7 +33,7 @@ import contract
 
 # Models whose draw stream AND scheduling align seed-by-seed, so they support
 # exact per-seed comparison. `hospital` is excluded (eviction-handoff ordering).
-EXACT_MODELS = {"mm1", "mmc", "priority", "container"}
+EXACT_MODELS = {"mm1", "mmc", "priority", "container", "coffee"}
 
 # Accepted, documented divergences keyed by (model, metric). A failure here is
 # reported as a *known exception* — surfaced in the table but NOT counted as a
@@ -151,6 +151,7 @@ def default_config(scale=1.0):
         dict(model="mmc", seeds=s, n=n, lam=1.6, mu=1.0, servers=2),
         dict(model="priority", seeds=s, n=n, lam=0.85, mu=1.0, servers=1),
         dict(model="container", seeds=s, n=n, lam=0.9, mu=1.0, servers=1),
+        dict(model="coffee", seeds=s, n=n, lam=1.7, mu=0.5, servers=4),
         dict(model="hospital", seeds=s, n=n, lam=0.9, mu=1.0, servers=1),
     ]
 
@@ -169,7 +170,7 @@ def render_markdown(results):
         "transforms), seeded identically per replication.\n"
     )
     lines.append(
-        "- **Exact mode** (mm1, mmc, priority, container): every metric must "
+        "- **Exact mode** (mm1, mmc, priority, container, coffee): every metric must "
         "agree **seed-by-seed** within 1e-9 relative; FAIL otherwise.\n"
         "- **Distributional mode** (hospital): FAIL = statistically significant "
         "(t-test p < 0.01) **and** material (relative mean difference > 5%).\n"

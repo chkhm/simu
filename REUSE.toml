@@ -14,6 +14,7 @@ path = [
     "Cargo.lock",
     "compare/requirements.txt",
     "llms.txt",
+    "articles/*.png",
 ]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "Copyright (c) Siemens 2026 contributed by Christoph Kuhmuench christoph.kuhmuench@gmail.com"

@@ -21,6 +21,7 @@ rust-version = "1.82"
 exclude = [
     "compare/",
     "reviews/",
+    "articles/",
     ".github/",
     "target/",
     ".claude/",

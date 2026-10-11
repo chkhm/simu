@@ -25,6 +25,8 @@
 //!   mmc       M/M/c queue (`--servers c`)
 //!   priority  two-class priority queue (PriorityResource, 50/50 split)
 //!   container Container head-of-line FIFO stress test
+//!   coffee    coffee shop: cashiers, reneging, priority baristas, milk Container
+//!             (`--servers` baristas; scalable benchmark)
 //!   hospital  faithful port of examples/hospital.rs (ignores --n/--lambda/--mu)
 //!
 //! Flags:
@@ -111,10 +113,7 @@ fn num(x: f64) -> String {
 
 /// Build a JSON object body from `(key, value)` pairs already-formatted as JSON.
 fn obj(pairs: &[(&str, String)]) -> String {
-    let body: Vec<String> = pairs
-        .iter()
-        .map(|(k, v)| format!("\"{k}\":{v}"))
-        .collect();
+    let body: Vec<String> = pairs.iter().map(|(k, v)| format!("\"{k}\":{v}")).collect();
     format!("{{{}}}", body.join(","))
 }
 
@@ -140,7 +139,11 @@ async fn queue_customer(
     env.timeout(service).await;
     drop(guard);
     let departure = env.now();
-    recs.borrow_mut().push(Rec { wait, service, departure });
+    recs.borrow_mut().push(Rec {
+        wait,
+        service,
+        departure,
+    });
 }
 
 async fn queue_arrivals(
@@ -190,9 +193,17 @@ fn run_queue(seed: u64, n: u64, lambda: f64, mu: f64, servers: usize) -> String 
     let sum_sojourn: f64 = recs.iter().map(|r| r.wait + r.service).sum();
 
     let mean_wait = if count > 0.0 { sum_wait / count } else { 0.0 };
-    let mean_sojourn = if count > 0.0 { sum_sojourn / count } else { 0.0 };
+    let mean_sojourn = if count > 0.0 {
+        sum_sojourn / count
+    } else {
+        0.0
+    };
     // Mean number in system L = area under N(t) / horizon = sum(sojourn) / T.
-    let mean_queue = if t_end > 0.0 { sum_sojourn / t_end } else { 0.0 };
+    let mean_queue = if t_end > 0.0 {
+        sum_sojourn / t_end
+    } else {
+        0.0
+    };
     let utilization = if t_end > 0.0 {
         sum_service / (servers as f64 * t_end)
     } else {
@@ -246,7 +257,11 @@ async fn prio_arrivals(
         env.timeout(inter_arrival).await;
         let arrival = env.now();
         let service = sample::exponential(&mut env.rng(), 1.0 / mu);
-        let prio: u32 = if sample::bernoulli(&mut env.rng(), 0.5) { 0 } else { 1 };
+        let prio: u32 = if sample::bernoulli(&mut env.rng(), 0.5) {
+            0
+        } else {
+            1
+        };
         env.spawn(prio_customer(
             env.clone(),
             res.clone(),
@@ -390,6 +405,204 @@ fn run_container(seed: u64, n: u64) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Coffee shop (scalable benchmark; exact-comparison twin of compare/models/coffee.py)
+//
+// `--servers c` baristas, `ceil(c/2)` cashiers, Poisson(`--lambda`) arrivals,
+// barista prep Exp(mean 1/`--mu`). A share of customers order ahead on mobile and
+// skip the cashier; walk-ins give up (renege) if the cashier queue outlasts
+// their patience. Baristas serve walk-ins (prio 0) ahead of mobile orders
+// (prio 1), and milk drinks draw from a milk fridge (Container) that is topped
+// up every 30 minutes. Every random number is drawn at arrival in a fixed order,
+// so the draw sequence is independent of event order (exact-mode eligible).
+// Units are minutes. Shared with examples/coffee_shop.rs in spirit, not in code.
+// ---------------------------------------------------------------------------
+
+const CF_MOBILE_P: f64 = 0.3;
+const CF_ORDER_MEAN: f64 = 1.0;
+const CF_PATIENCE_MEAN: f64 = 5.0;
+const CF_MILK_P: f64 = 0.6;
+const CF_MILK_PER_DRINK: f64 = 0.25;
+const CF_MILK_CAP_PER_BARISTA: f64 = 2.0;
+const CF_RESTOCK_INTERVAL: f64 = 30.0;
+
+#[derive(Clone)]
+struct CfShop {
+    cashier: Resource,
+    barista: PriorityResource,
+    milk: Container,
+    recs: Rc<RefCell<Vec<CfRec>>>,
+    reneged: Rc<RefCell<u64>>,
+    departed: Rc<RefCell<u64>>,
+}
+
+struct CfRec {
+    walk_in: bool,
+    milk: bool,
+    wait_cashier: f64,
+    wait_barista: f64,
+    wait_milk: f64,
+    busy: f64,
+    in_shop: f64,
+    departure: f64,
+}
+
+struct CfCustomer {
+    mobile: bool,
+    order: f64,
+    patience: f64,
+    prep: f64,
+    milk: bool,
+}
+
+async fn cf_customer(env: EnvHandle, shop: CfShop, c: CfCustomer) {
+    let arrival = env.now();
+    let mut wait_cashier = 0.0;
+    if !c.mobile {
+        // Race the cashier queue against the customer's patience. The request
+        // arm parks its guard in `slot`; an empty slot means patience won.
+        let slot = Rc::new(RefCell::new(None));
+        let s = slot.clone();
+        let req = shop.cashier.request();
+        any_of![
+            async move {
+                *s.borrow_mut() = Some(req.await);
+            },
+            env.timeout(c.patience)
+        ]
+        .await;
+        let Some(cashier) = slot.take() else {
+            *shop.reneged.borrow_mut() += 1;
+            *shop.departed.borrow_mut() += 1;
+            return;
+        };
+        wait_cashier = env.now() - arrival;
+        env.timeout(c.order).await;
+        drop(cashier);
+    }
+
+    let queued = env.now();
+    let barista = shop.barista.request(if c.mobile { 1 } else { 0 }).await;
+    let start = env.now();
+    if c.milk {
+        shop.milk.get(CF_MILK_PER_DRINK).await;
+    }
+    let wait_milk = env.now() - start;
+    env.timeout(c.prep).await;
+    drop(barista);
+
+    let departure = env.now();
+    shop.recs.borrow_mut().push(CfRec {
+        walk_in: !c.mobile,
+        milk: c.milk,
+        wait_cashier,
+        wait_barista: start - queued,
+        wait_milk,
+        busy: departure - start,
+        in_shop: departure - arrival,
+        departure,
+    });
+    *shop.departed.borrow_mut() += 1;
+}
+
+async fn cf_arrivals(env: EnvHandle, shop: CfShop, n: u64, lambda: f64, mu: f64) {
+    for _ in 0..n {
+        let inter_arrival = sample::exponential(&mut env.rng(), 1.0 / lambda);
+        env.timeout(inter_arrival).await;
+        let c = {
+            let mut rng = env.rng();
+            CfCustomer {
+                mobile: sample::bernoulli(&mut rng, CF_MOBILE_P),
+                order: sample::exponential(&mut rng, CF_ORDER_MEAN),
+                patience: sample::exponential(&mut rng, CF_PATIENCE_MEAN),
+                prep: sample::exponential(&mut rng, 1.0 / mu),
+                milk: sample::bernoulli(&mut rng, CF_MILK_P),
+            }
+        };
+        env.spawn(cf_customer(env.clone(), shop.clone(), c));
+    }
+}
+
+/// Top the milk fridge up to capacity every interval until every customer has left.
+async fn cf_restock(env: EnvHandle, shop: CfShop, n: u64) {
+    loop {
+        env.timeout(CF_RESTOCK_INTERVAL).await;
+        if *shop.departed.borrow() == n {
+            break;
+        }
+        let top_up = shop.milk.capacity() - shop.milk.level();
+        if top_up > 0.0 {
+            shop.milk.put(top_up).await;
+        }
+    }
+}
+
+fn run_coffee(seed: u64, n: u64, lambda: f64, mu: f64, servers: usize) -> String {
+    let mut env = SimEnv::with_source(SplitMix64::new(seed));
+    let milk_cap = CF_MILK_CAP_PER_BARISTA * servers as f64;
+    let shop = CfShop {
+        cashier: Resource::new(servers.div_ceil(2)),
+        barista: PriorityResource::new(servers),
+        milk: Container::new(milk_cap, milk_cap),
+        recs: Rc::new(RefCell::new(Vec::with_capacity(n as usize))),
+        reneged: Rc::new(RefCell::new(0)),
+        departed: Rc::new(RefCell::new(0)),
+    };
+
+    env.spawn(cf_arrivals(env.handle(), shop.clone(), n, lambda, mu));
+    env.spawn(cf_restock(env.handle(), shop.clone(), n));
+    env.run();
+
+    let reneged = *shop.reneged.borrow();
+    let recs = shop.recs.borrow();
+    let mean = |xs: Vec<f64>| -> f64 {
+        if xs.is_empty() {
+            0.0
+        } else {
+            xs.iter().sum::<f64>() / xs.len() as f64
+        }
+    };
+    let t_end = recs.iter().map(|r| r.departure).fold(0.0_f64, f64::max);
+    let busy: f64 = recs.iter().map(|r| r.busy).sum();
+    let utilization = if t_end > 0.0 {
+        busy / (servers as f64 * t_end)
+    } else {
+        0.0
+    };
+
+    obj(&[
+        ("served", num(recs.len() as f64)),
+        ("reneged", num(reneged as f64)),
+        (
+            "mean_wait_cashier",
+            num(mean(
+                recs.iter()
+                    .filter(|r| r.walk_in)
+                    .map(|r| r.wait_cashier)
+                    .collect(),
+            )),
+        ),
+        (
+            "mean_wait_barista",
+            num(mean(recs.iter().map(|r| r.wait_barista).collect())),
+        ),
+        (
+            "mean_wait_milk",
+            num(mean(
+                recs.iter()
+                    .filter(|r| r.milk)
+                    .map(|r| r.wait_milk)
+                    .collect(),
+            )),
+        ),
+        (
+            "mean_time_in_shop",
+            num(mean(recs.iter().map(|r| r.in_shop).collect())),
+        ),
+        ("barista_utilization", num(utilization)),
+    ])
+}
+
+// ---------------------------------------------------------------------------
 // Hospital (port of examples/hospital.rs; statistical-comparison policy)
 //
 // Differences vs. the showcase example (deliberate, mirrored on the SimPy side):
@@ -455,7 +668,13 @@ async fn h_arrivals(env: EnvHandle, ctx: HCtx) {
         let treatment = sample::exponential(&mut env.rng(), H_MEAN_TREATMENT);
         let is_critical = sample::bernoulli(&mut env.rng(), H_CRITICAL_PROB);
         let triage = if is_critical { 0_u32 } else { 1_u32 };
-        env.spawn(h_patient(env.clone(), patient_id, triage, treatment, ctx.clone()));
+        env.spawn(h_patient(
+            env.clone(),
+            patient_id,
+            triage,
+            treatment,
+            ctx.clone(),
+        ));
         patient_id += 1;
     }
 }
@@ -571,7 +790,16 @@ fn main() {
         })
     } else {
         (0..args.seeds)
-            .map(|seed| run_model(&args.model, seed, args.n, args.lambda, args.mu, args.servers))
+            .map(|seed| {
+                run_model(
+                    &args.model,
+                    seed,
+                    args.n,
+                    args.lambda,
+                    args.mu,
+                    args.servers,
+                )
+            })
             .collect()
     };
     let wall_secs = start.elapsed().as_secs_f64();
@@ -608,6 +836,7 @@ fn run_model(model: &str, seed: u64, n: u64, lambda: f64, mu: f64, servers: usiz
         "mmc" => run_queue(seed, n, lambda, mu, servers),
         "priority" => run_priority(seed, n, lambda, mu, servers),
         "container" => run_container(seed, n),
+        "coffee" => run_coffee(seed, n, lambda, mu, servers),
         "hospital" => run_hospital(seed),
         other => panic!("unknown model: {other}"),
     }
@@ -617,9 +846,10 @@ fn run_model(model: &str, seed: u64, n: u64, lambda: f64, mu: f64, servers: usiz
 /// definition on the SimPy side, so events/sec is comparable across tools).
 fn events_for(model: &str, body: &str, n: u64) -> u64 {
     match model {
-        "mm1" | "mmc" | "priority" => 2 * n, // one arrival + one departure per customer
+        // one arrival + one departure (or renege) per customer
+        "mm1" | "mmc" | "priority" | "coffee" => 2 * n,
         "container" => n + field_u64(body, "served"), // arrivals + completed gets
-        "hospital" => 2 * count_completed(body), // two transitions per completed patient
+        "hospital" => 2 * count_completed(body),      // two transitions per completed patient
         other => panic!("unknown model: {other}"),
     }
 }

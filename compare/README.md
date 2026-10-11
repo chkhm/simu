@@ -36,7 +36,7 @@ compare/
 │   ├── _feed.py              # portable SplitMix64 + transforms (twin of src/rng.rs)
 │   ├── test_feed.py          # cross-language known-answer test (shared with Rust)
 │   ├── queue_model.py        # shared M/M/c logic
-│   ├── mm1.py  mmc.py  priority_queue.py  container.py  hospital.py
+│   ├── mm1.py  mmc.py  priority_queue.py  container.py  coffee.py  hospital.py
 ├── harness/
 │   ├── contract.py           # subprocess runners + result schema + RSS/timing
 │   ├── run_correctness.py    # exact (per-seed) + distribution tests + Erlang-C ground truth
@@ -88,6 +88,7 @@ Every run prints one line:
 | `mmc`       | `Resource(c)`              | (same) |
 | `priority`  | `PriorityResource`         | mean_wait_high / _low / _all |
 | `container` | `Container` (mixed sizes)  | mean_wait_all / _small / _large, served |
+| `coffee`    | `Resource` + `any_of!` reneging, `PriorityResource`, `Container` (`--servers` baristas; twin of `examples/coffee_shop.rs`) | served, reneged, mean_wait_cashier / _barista / _milk, mean_time_in_shop, barista_utilization |
 | `hospital`  | port of `examples/hospital.rs` | the 8 hospital metrics |
 
 `events` uses an identical, model-specific definition on both sides (e.g. `2·N`
@@ -145,13 +146,15 @@ drifts, one of the two test suites fails. Run the Python side with
 
 ## Performance methodology
 
-The performance report has two parts:
+The performance report has three parts:
 
-1. **Single-thread engine efficiency.** One large replication per model (the
-   hospital model is scaled by seed count instead, since it ignores `n`), run
+1. **Single-thread engine efficiency.** One large replication per model
+   (`mm1`, `mmc`, `priority`, `coffee`; `hospital` is correctness-only), run
    sequentially in both tools. This isolates per-event overhead — Rust vs CPython
    — and yields the wall-clock / events-per-sec / peak-RSS table.
-2. **Monte Carlo parallelism.** Many independent replications, where simu fans the
+2. **Scaling.** The `coffee` model at 1k, 10k, 100k and 1M customers (one
+   replication each), showing linear scaling and a size-independent speedup.
+3. **Monte Carlo parallelism.** Many independent replications, where simu fans the
    seeds across threads via `monte_carlo::run` (rayon pool) while SimPy runs them
    sequentially — CPython's GIL prevents thread parallelism. The headline column
    is simu-parallel vs SimPy-sequential wall-clock: roughly the single-thread

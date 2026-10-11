@@ -32,6 +32,7 @@ SIMPY_SCRIPTS = {
     "mmc": "mmc.py",
     "priority": "priority_queue.py",
     "container": "container.py",
+    "coffee": "coffee.py",
     "hospital": "hospital.py",
 }
 
