@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) Siemens 2026 contributed by Christoph Kuhmuench christoph.kuhmuench@gmail.com
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+[package]
+name = "one_barista_monte-carlo"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rand = "0.9"
+rand_distr = "0.5"
+simu-des = { version = "0.1.0", features = ["monte-carlo"] }

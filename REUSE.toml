@@ -12,6 +12,7 @@ path = [
     ".gitignore",
     "compare/.gitignore",
     "Cargo.lock",
+    "examples/*/Cargo.lock",
     "compare/requirements.txt",
     "llms.txt",
     "articles/*.png",

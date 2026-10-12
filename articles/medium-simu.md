@@ -24,6 +24,7 @@ swap it for a mini coffee shop if you prefer one domain throughout.
 
 ## 1. Hook
 
+TODO: Remove bullet points after checking correctness and completeness
 - Pain point: SimPy is the default for DES in Python, and it's pleasant to use.
   Slowness bites when you need many replications (confidence intervals,
   parameter sweeps, optimisation loops).
@@ -37,8 +38,19 @@ swap it for a mini coffee shop if you prefer one domain throughout.
 - *Author's choice:* a personal sentence on why you built it (a model that was
   too slow?). A personal origin story makes the article feel genuine.
 
+When researchers and engineers need to create a simulation from scratch they often end up using the Python module SimPy (TODO add link). It offers the fast and simple turn-around time of Python with a fairly complete module that offers the basic infrastructure for Discrete Event Simulation (TODO add link to Wikipedia article or similar source). This is especially true during the exploratory phase in a Jupyter Notebook (TODO add link).
+In the modern world of fast turn-arounds these prototypes then often end up becoming the product. And when that product needs to run high performance simulations with large scenarios and huge data, the slowness of Python is hurting. Moreover, a notebook prototype that grows into a product tends to carry its prototype habits along: lengthy, complex functions doing many things are hard to test, hence test automation is de-prioritized, and the result is a quickly developed, but hard to maintain and slow application.
+
+In my opinion, AI-supported coding will change the entire process: Researchers will simply request the AI to write the algorithm they want to try out, rather then them writing and testing in a Jupyter Notebook. And in my experience, Rust is a great language for AI-based engineering, because the compiler gives detailed feedback, the language is structured, and there is a rich ecosystem of crates.
+
+My Rust Crate simu-des (TODO add link) offers just that: A framework offering the core features of Python's SimPy, written in Rust that follows SimPy's concept but in a Rust-idiomatic way. In addition, I put effort into providing markdown files which enable your favorite programming agent to create a simulation for you quickly and in great quality.
+
+In this article, I will introduce you to the framework, highlight the similarity to SimPy, and provide you with some performance numbers that hopefully convince you to give it a try when you have to create your next simulator. I'll round out the article with examples how you can use AI-supported programming for quick simulation development.
+
+
 ## 2. DES in 60 seconds (short primer)
 
+TODO: Remove bullet points after checking correctness and completeness
 - DES = model a system as **events at points in time**; the clock *jumps* from
   event to event (no fixed time step). Nothing happens between events.
 - Building blocks (map each to a simu type later):
@@ -54,8 +66,15 @@ swap it for a mini coffee shop if you prefer one domain throughout.
 - Bridge sentence idea: Rust's `async/await` is the same idea as SimPy's
   generators. A process suspends at `.await` the way it suspends at `yield`.
 
+Before we dive into the nuts and bolts of simu-des, we need to understand what Discrete Event Simulation actually is: 
+"A discrete event simulation (DES) is a modeling method that represents a system as a chronological sequence of distinct, instantaneous events where state changes occur." (TODO URL: https://www.haskoning.com/en/newsroom/blogs/2024/what-is-discrete-event-simulation-and-how-does-it-work). The interesting part of DES is that it does not continuously simulate the progress of time in uniform fractions of seconds. Instead it jumps in time from one event timestamp to the next. Quiet phases, during which nothing of importance (for this simulation) happens, are simply skipped. At an event point of time, you typically calculate the changes of the system, calculate the next event (or events), put them into an event priority queue, and hop on to the next event. This allows you to very rapidly simulate a system. Most interesting models are stochastic: event times are drawn at random (e.g., a coffee shop with randomly arriving customers). A single run then tells you little, so DES is often combined with Monte-Carlo simulation: you run the same model many times with different random seeds and look at the distribution of the results. This allows you to analyze how well a system copes with random fluctuations.
+
+For more details on Discrete Event Simulation have a look at the following list of sources (TODO add sources), and watch out for my upcoming introductory article on this very useful technique.
+
+
 ## 3. Meet simu
 
+TODO: Remove bullet points after checking correctness and completeness
 - crates.io: **`simu-des`** (the library is imported as `simu`), v0.1.0, MIT OR Apache-2.0.
   `cargo add simu-des`
 - Repo: https://github.com/chkhm/simu · Docs: https://docs.rs/simu-des (start at the `tutorial` module)
@@ -69,12 +88,28 @@ swap it for a mini coffee shop if you prefer one domain throughout.
     goes out of scope. You can't forget to release it.
   - Parallelism lives *between* replications (`monte_carlo::run`), not inside one.
 
+**`simu-des`** is my recently released Rust Crate, v0.1.0, MIT or Apache-2.0 licensed. You can add it to your Rust project with `cargo add simu-des`. The source code can be found in my github repository (TODO add link). The docs are here. (TODO add link). I recommend that you start with the `tutorial` module.
+Here are some design highlights:
+
+- It runs in a **single-threaded async executor** that is driven by the *simulated* time. Although it uses async mechanisms it does not depend on tokio or any other async module.
+- **Deterministic**: I took quite some care to ensure that repeated runs with the same input lead to the same result: events are ordered by time. Events with the same time stamp are processed by insertion order. If you run a Monte Carlo simulation with the same seed multiple times, you will always get the same run and hence the same result.
+- Resources are cheap `Rc` handles which can be cloned with `clone()`. No need for atomic ref counters and mutexes with `Arc<Mutex>` because the executor is single threaded.
+- **RAII release:** following good Rust programming habits, a resource unit is returned automatically when its guard goes out of scope. So a unit can't stay occupied forever just because a release call was forgotten, which would leave every process queued behind it waiting forever.
+- **Fast per run:** the simulation is compiled code without an interpreter in between. On a single core, simu runs the same models 12–18× faster than SimPy (see section 7).
+- **Parallel across runs:** on top of that, a Monte-Carlo simulation makes use of the multi-core capabilities of your hardware by running the simulation with different seeds in parallel (`monte_carlo::run`). Within one run, execution stays sequential.
+
+We will look at these mechanisms in the following sections. But first, let's start with a simple "Hello World" simulator.
+
 ## 4. Your first model: SimPy vs simu side by side
 
+TODO: Remove bullet points after checking correctness and completeness
 - Model: 4 electric cars, staggered arrivals, a charging station with 2 spots.
   This is the classic SimPy tutorial scenario. Both programs print **identical
   traces** (verified; output below).
 - Rust (verbatim from `examples/intro_charging_station.rs`, tutorial chapter 4):
+
+
+In this section we look at a simple simulation of a car charging station. For those familiar with SimPy, this example will look familiar. In this example we simulate a system consisting of 4 electric cars with staggered arrival times at a charging point with two charging spots. They spend a certain time at the charging point for recharging, and then drive off, making room for the next car to use it. The example is also discussed in the tutorial of the simu-des Rust Module (TODO link to chapter 4). The following code is a verbatim excerpt from the tutorial (TODO add link to rust code file):
 
 ```rust
 use simu::{Resource, SimEnv};
@@ -103,7 +138,12 @@ fn main() {
 }
 ```
 
-- SimPy equivalent (written for this article and verified with SimPy 4.1.2):
+We start by creating the simulation environment object `env`. This provides the control functionality for the simulation. Next, we create a single resource with two charging spots. In the for-loop we register asynchronous processes; one for each car, so 4 in total.
+Each of the four processes works with a handle of the simulation environment as well as with a clone of the battery charging point resource. This clone points to the same two charging points, so despite the clone we still have access to the same data. The timeout function call ensures that the car arrival at the charging point is staggered with a 2 time units time interval. The `station.request()` tries to acquire one of the two charging point resources. If both spots are occupied, the process is queued up and waits. The charging time is hard-coded with 5 time units. After this, the process is completed, the variable `_spot` goes out of scope and the resource is released.
+
+Note that the for-loop is setting the simulation up, by adding each process to the environment with `env.spawn`. Execution is only started when `env.run()` is called.
+
+Now let's take a look at the Python counterpart. It is written specifically for this article, and is tested with SimPy 4.1.2:
 
 ```python
 import simpy
@@ -125,7 +165,7 @@ env.run()
 print(f"Simulation ended at {env.now}")
 ```
 
-- Output (both, identical except `5.0` vs `5` float formatting):
+Note, that the code works fairly similar to the simu-des Rust code. We also have a simulation environment, resources, and processes. Some of the Rust ownership plumbing is obviously not needed in Python, but otherwise the code is very similar. The Rust code and the Python code create the same output with a minute difference in floating number formatting: Python prints `5.0` where Rust prints `5`. Here is the Rust output:
 
 ```
 Car 0 arriving at 0
@@ -143,7 +183,7 @@ Car 3 leaving at 12
 Simulation ended at 12
 ```
 
-- Mapping table to explain (or show as a small table):
+The following table summarizes the mapping between the SimPy original and the Rust re-implementation:
 
 | SimPy | simu |
 |---|---|
@@ -153,23 +193,210 @@ Simulation ended at 12
 | `simpy.Resource(env, capacity=2)` | `Resource::new(2)`, shared via `.clone()` |
 | `env.run(until=15)` | `env.run_until(15.0)` |
 
-- Honest talking point: the Rust version is a few lines longer (`handle()`,
-  `clone()`, `async move`). That boilerplate is what an agent writes for you (see §8).
+The reader will of course notice that the Rust version is a bit longer because Rust requires some explicit ownership plumbing in the form of boilerplate code (`handle()`, `clone()`, and `async move`). However, this is the stuff that an AI agent easily writes for you. More about that you find in section 8.
 
 ## 5. What's in the box
+
+In this section we have a quick walk-through the features included so far:
+
+### 5.1 Resources
 
 - Resources: `Resource` (FIFO), `PriorityResource` (lower number = higher
   priority, FIFO within a level), `PreemptiveResource` (higher priority evicts
   a running holder; cooperative: the holder notices via `guard.preempted()`),
   `Container` (continuous quantity, e.g. a fuel tank, strict FIFO).
+
+A resource is a system element with a limited capacity that simulation processes must request, utilize, and release to perform tasks. It represents any physical or abstract entity that constrains the flow of work because it cannot handle an infinite amount of demand simultaneously.
+
+Here are the most important characteristics of a resource:
+
+- Capacity Limits: A resource has a defined limit on how many processes it can serve at one time.
+- Request and Release Lifecycle: Processes follow a strict cycle: they Request the resource, Hold it for a duration of virtual simulation time, and Release it when finished.
+- Queue Management: If a process requests a resource that is fully occupied, the simulation automatically places that process into a waiting queue (line) until capacity frees up. 
+
+The module currently supports four types of resources:
+
+1. `Resource` represents scarce elements that need to be allocated before they can be used. A `Resource` has a capacity of *n* units; each unit is held by one process at a time. When all units are busy, further requests wait in a FIFO queue based on arrival time.
+2. `PriorityResource` adds the feature that processes provide a priority value when trying to acquire the resource. Waiting processes are sorted first by their priority number (lower number = served first), and second by arrival time.
+3. `PreemptiveResource` lets a higher-priority request take a unit away from a lower-priority holder immediately. Preemption is cooperative: the holder notices it at its next wait point by racing its work against `guard.preempted()` (e.g. `any_of![h.timeout(d), guard.preempted()]`), or by checking `guard.is_preempted()` afterwards. The preempted process does not go back into the queue automatically; it decides itself whether to request the resource again.
+4. `Container` is a continuous resource; i.e. it can represent non-discrete resources like tanks filled with liquids. Containers operate in a strict FIFO mode: the first waiting process gets its amount as soon as enough is available, and later requests wait behind it. Needless to say, these resources can be "refilled" with `put`.
+
+Based on the example shown above, you can see that using resources is a simple and easy to understand mechanism.
+
+### 5.2 Signalling
+
+TODO: Remove bullet points after checking correctness and completeness
 - Signalling: `env.event()` gives `(EventTrigger, EventAwaitable)`. Many waiters,
   fire once. If the event fires before anyone awaits it, later waiters still see it.
 - Combinators: `any_of!` / `all_of!` (race a timeout against a signal; the losing
   branch is dropped, which is simu's equivalent of SimPy's `Interrupt`).
+
+Processes need to be able to communicate with each other. This is done via Signalling of Events. We haven't seen the signalling mechanism in use yet, so here is a short example:
+
+```rust
+use simu::SimEnv;
+
+fn main() {
+    // 1. Initialize the simulation environment
+    let mut env = SimEnv::new();
+
+    // 2. Create the event pair via env.event() -> (EventTrigger, EventAwaitable)
+    let (trigger, ready) = env.event();
+
+    // 3. Spawn customer processes using env.handle()
+    for customer_id in 1..=3 {
+        let env_handle = env.handle();
+        let r = ready.clone();
+        env.spawn(async move {
+            env_handle.timeout(f64::from(customer_id) * 2.0).await; // arrival time of customer
+            println!(
+                "[Time: {:.1}] Customer {} arrives and waits outside.",
+                env_handle.now(),
+                customer_id
+            );
+            // Wait for the EventTrigger to fire
+            r.await;
+            println!(
+                "[Time: {:.1}] Customer {} goes inside to get help!",
+                env_handle.now(),
+                customer_id
+            );
+        });
+    }
+
+    // 4. Spawn a staff process using env.handle() to trigger the event
+    let env_handle = env.handle();
+    env.spawn(async move {
+        // Wait 5.5 units of virtual simulation time
+        env_handle.timeout(5.5).await;
+
+        println!(
+            "[Time: {:.1}] Technician arrives and opens the doors!",
+            env_handle.now()
+        );
+
+        // Call fire() on the EventTrigger to resume all listeners
+        trigger.fire();
+    });
+
+    // 5. Run the discrete event simulation loop
+    env.run();
+}
+```
+
+This artificial example simulates a situation where customers arrive at a tech support which is closed until timestamp `5.5`. Before that, customers show up at the door of the tech support, and since it is closed, they are awaiting the event that the tech support staff arrives and helps them. Here it is assumed that they can all be helped at once (unrealistic), but it shows that an event when fired, releases all awaiting processes.
+
+Note that customer 3 arrives after the tech-support staff arrived, so they are immediately released and can go inside right away. This shows that once an event is fired, the door stays open. The mechanism is deliberately designed as a broadcast communication mechanism. If you want to release individual processes, you usually have a situation with a limited resource, and you should have the processes wait on a resource accordingly.
+
+The simu module offers more mechanisms to realize different scenarios. For example the macros `any_of!` and `all_of!` allow a process to wait for the first of, or for all of, several futures: timeouts, events, or child processes (anything that returns nothing). `any_of!` is particularly useful when you want to wait for an event with a timeout: `any_of![env_handle.timeout(10.0), signal.clone()].await;`. Note that `any_of!` does not tell you *which* future won; you find out afterwards, e.g. by checking `env_handle.now()` or a flag set by the winning branch. `all_of!` is obviously useful in situations where multiple events must have happened before a process can be released: `all_of![trainer_arrived_event.clone(), football_arrived_event.clone()].await;`.
+
+
+### 5.3 Waiting for child processes
+
+TODO: Remove bullet points after checking correctness and completeness
 - `ProcessHandle<T>`: spawn a child, `.await` its return value (like a typed join).
+
+When you `spawn` a process, you get back a `ProcessHandle<T>`, where `T` is whatever the process's `async` block returns. Awaiting the handle suspends the parent until the child has finished, and then hands over the child's return value. If you know Rust's threads, this is the equivalent of `std::thread::JoinHandle::join()`; in SimPy it corresponds to `value = yield env.process(child())`. You wait for a sub-task and get its result, and the compiler checks the type of that result.
+
+The tutorial's chapter 2 (TODO add link to `examples/intro_charging.rs`) shows this. A driving process spawns a charging sub-process and waits for it:
+
+```rust
+let hc = h.clone();
+let charging = h.spawn(async move {
+    hc.timeout(5.0).await;
+    42.0 // a process can return a value, e.g. the kWh charged
+});
+let kwh = charging.await; // suspend until charging finishes
+```
+
+A few things are worth knowing about process handles:
+
+- **Fork-join:** a parent can spawn several children and wait for all of them with `all_of![child_a, child_b].await` (this works for children that return nothing). The warehouse example uses this to find out when the whole day's work is done.
+- **Drop to detach:** if you don't keep the handle, the child simply keeps running on its own (fire-and-forget), just like the cars in the charging-station example.
+- **One waiter only:** a handle cannot be cloned, so exactly one process can await the result. If several processes need to know that something finished, fire an event at the end of the child; that's the broadcast mechanism from section 5.2.
+
+In short: events are for *"tell everyone"*, a process handle is for *"wait for my sub-task and get its answer"*, and resources and containers are for *"admit one at a time"*.
+
+### 5.4 Randomness and Monte-Carlo Simulations
+
+TODO: Remove bullet points after checking correctness and completeness
 - Pluggable randomness: default seeded `StdRng`, or `SplitMix64` for cross-engine comparisons.
 - `monte_carlo::run`: replications over threads (`std::thread`, or rayon via
   the `monte-carlo` feature). Results come back in seed order, identical to a sequential run.
+
+A key functionality of a simulator is to run it repeatedly with differing random number seeds to calculate averages, or finding corner cases. This is also called Monte-Carlo simulation (TODO add URL to definition). `simu` offers you two ways to plug in randomness: (1) use Rust's standard `StdRng` standard random number generator, and (2) `SplitMix64` as a random number generator algorithm that can be implemented in many different programming languages (TODO provide URL to definition). `StdRng` is the standard in Rust, works reliable, and fast, so it is practically a mandatory feature to have. The module also offers `SplitMix64` so that simulations written with this module can be compared to simulations written in other programming languages. It is also useful if a Simulation written in Rust must cooperate with a program written in a different programming language and they both need to rely on the same sequence of random numbers. My main reason here was so that I can compare the performance of Rust-based simulations against those written in Python.
+
+The following short example shows how Monte-Carlo simulations can be done with `simu`: Imagine you have a coffee shop with a single barrista with customers arriving with an average arrival rate of 2.5 minutes and the average coffee preparation time taking 2 minutes. We want to know what the expected average waiting time per customer is. The following short program simulates 1 hour with 1000 different random number seeds:
+
+```bash
+cargo new one_barista_monte-carlo
+cd one_barista_monte_carlo
+cargo add simu-des --features monte-carlo
+cargo add rand@0.9 rand_distr@0.5
+```
+
+Copy the following code into the `main.rs` file:
+
+```rust
+// main.rs
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use rand::Rng;
+use rand_distr::Exp;
+use simu::{monte_carlo, Resource, SimEnv};
+
+/// One hour at a coffee stand with one barista. Returns the mean wait (minutes).
+fn one_hour(seed: u64) -> f64 {
+    let mut env = SimEnv::with_seed(seed);
+    let barista = Resource::new(1);
+    let waits = Rc::new(RefCell::new(Vec::new()));
+
+    let h = env.handle();
+    let w = waits.clone();
+    env.spawn(async move {
+        while h.now() < 60.0 {
+            let gap = h.rng().sample(Exp::new(1.0 / 2.5).unwrap()); // a customer every 2.5 min
+            h.timeout(gap).await;
+            let (hc, b, w) = (h.clone(), barista.clone(), w.clone());
+            h.spawn(async move {
+                let arrived = hc.now();
+                let _barista = b.request().await;
+                w.borrow_mut().push(hc.now() - arrived);
+                let prep = hc.rng().sample(Exp::new(1.0 / 2.0).unwrap()); // ~2 min per drink
+                hc.timeout(prep).await;
+            });
+        }
+    });
+    env.run();
+
+    let waits = waits.borrow();
+    waits.iter().sum::<f64>() / waits.len().max(1) as f64
+}
+
+fn main() {
+    // 1,000 independent hours, one seed each, spread over all CPU cores
+    let mut results = monte_carlo::run(0..1000, one_hour);
+
+    results.sort_by(f64::total_cmp);
+    let mean = results.iter().sum::<f64>() / results.len() as f64;
+    println!("average wait:   {mean:.1} min");
+    println!("best 5% of days: under {:.1} min", results[50]);
+    println!("worst 5% of days: over {:.1} min", results[950]);
+}
+```
+
+As you can see, the function `one_hour()` simulates one our of operation of the coffee shop. It spawns a process that loops until the simulation time reaches 60 time units. Within that loop we wait for a random time (in average 2.5 time units). Afterwards we spawn another process (the barista coffee preparation process). Within that process we wait for the barista resource to become available, simulate the coffee preparation time - again by waiting for a random time of 2 time units in average. We then store the waiting time of the customer (consisting of the time until the barista became available + the time that took her to prepare the coffee) in a vector `waits`. When the 60 minutes of simulation time expired, the `one_hour` function calculates the average waiting times of the customers stored in the vector `waits`.
+
+The trick is that the barista process runs asychronously, and therefore, the process that spawns it, does not have to wait for it complete. Hence, new customer can arrive before the previously spawned coffee brewing processes are completed. The queuing of those processes happens against the barista resource.
+
+The averages are calculated in the `main` function by iterating over the results of the `monte_carlo::run()`.
+
+This concludes the rapid walk through of the features, and the above outlined barista example is a great que to introduce the example I will use to show-case the performance of this framework:
+
+### 5.5 The Coffee Shop example
+
+TODO: remove when done
 - Showcase examples to mention: **`coffee_shop`** (the article's running example,
   see below) and `warehouse` (logistics: a forklift fleet shared between
   receiving and shipping, the `PreemptiveResource` showcase). Each has a `.md`
@@ -178,15 +405,7 @@ Simulation ended at 12
   staffing study with 200 simulated days per setting, run in parallel. Real
   output (deterministic seeds 0–199; takes <1 s for all 800 days):
 
-```
-Baristas  Cashiers    Served  Walk-outs    Time in shop  Barista use
-------------------------------------------------------------------
-       3         2       779       34.2        59.0 min          99%
-       4         2       779       34.2         5.2 min          83%
-       5         3       806        7.1         3.1 min          67%
-       6         3       806        7.1         2.9 min          56%
-```
-
+TODO: remove when done
   - Story: going from 3 to 4 baristas cuts time in shop from 59 to 5 minutes
     (queues explode near 100% utilisation). The 6th barista buys almost nothing.
     Walk-outs depend on the cashiers, not the baristas.
@@ -198,6 +417,53 @@ Baristas  Cashiers    Served  Walk-outs    Time in shop  Barista use
 ```rust
 any_of![h.timeout(5.0), stop_signal].await;
 ```
+
+Imagine you want to simulate a coffee shop to find out how the number of baristas impacts the waiting time of the customers. A coffee shop has baristas, cashiers as discrete resources, and milk as a continuous resource. Obviously, customers have only a limited amount of patience, and if they have to wait too long they will simply leave your shop and get their coffee somewhere else, despite you serving the best coffee in the world. Since this is a 21 century coffee shop, it also supports mobile ordering, which - for whatever reason - are prioritized, i.e. handled with higher priority than walk-ins.
+
+The complete source code is part of the released source code of the project and can be found here (TODO: add link to coffee-shop example).
+
+The easiest way to get it working by cloning the git repository and try it out with:
+
+```bash
+git clone https://github.com/chkhm/simu.git
+cd simu
+cargo run --release --example coffee_shop
+```
+
+A run should give you a result similar to the one shown below:
+
+```
+Baristas  Cashiers    Served  Walk-outs    Time in shop  Barista use
+------------------------------------------------------------------
+       3         2       779       34.2        59.0 min          99%
+       4         2       779       34.2         5.2 min          83%
+       5         3       806        7.1         3.1 min          67%
+       6         3       806        7.1         2.9 min          56%
+```
+
+Before we discuss the technical implementation, the results teach us that there is a sweet spot of 5 baristas combined with 3 cashiers. Increasing the baristas by one does not significantly reduce the waiting time of the customers. Obvisouly, more economic aspects of the simulation could be considered, but I leave that to you to come up with more complex questions and more complex simulation scenarios for this coffee shop (seasonality, availablility of baristas, etc., ordering frequency for milk, introduce coffee as a continuous resource, etc.).
+
+Instead, let us dive a bit deeper into how this simpler scenario is currently modeled. The following figure describes how resources, containers, processes, and monte-carlo runs can be used to simulate the coffee shop: 
+
+![Coffee shop](TODO add the figure)
+
+As you can see the example has a door process that spawns a customer process every ~1.7 time units. Of these customers, about ~30% are online orders. An online customer process skips the cashiers station and is is queueing up at the PriorityResource barista with higher priority than walk-ins. The walk-in customer process first queues up at the Resource cashier. They wait with with an `any_of!` until they are either able to acquire a cshiers resource or their patience runs out. They hold the `Resource cashier` for ~1 time unit. After that they queue up at the `PriorityQueue barista` with a lower priority than the online orders. The process then uses the `Container milk`. If the milk is empty the process awaits the refill of the milk which is triggered by a separate process `milk_run` which runs every 30 time units. The process simulates the coffee preparation for an average time span of 2 minutes. Once completed, thr process terminates and releases the barista resource.
+
+The following figure shows how this concept is realized by the functions you find in the source code:
+
+![functions of the coffee shop example](TODO add figure)
+
+The `main` function is responsible for triggering for monte-carlo simulations with different staffing settings. This is done in the for loop which starts the first monte-carlo simulation with 3 baristas and goes all the way to 6 baristas. For each configurtion it issues a `monte-carlo::run()` simulating 200 days each with a different random number seed. IT calculates the statistics of each monte-carlo simulation and prints them out.
+
+`simulate_day` is the function called for each monte-carlo run: It creates a new simulation environment with the given seed number, instantiates a Shop object holding the state of the coffee shop, spawns the `milk_run` process as well as the `door` process. Both processes run until 480 time units passed (representing one 8 hour work day). It kicks the simulation oof with a call to `env.run()`, and then creates statistics to be returned.
+
+`milk_run` is trivial: It waits for 30 time units, and then tops up the `Container milk`.
+
+`door` is also straight forward: It spawns the customer processes with the given arrival rate until, the 480 time units completed.
+
+`customer` does the already outlined customer process: It instantiates the requiered random values for order type (online vs walk in), order waiting time, patience, preparation waiting time, and milk boolean. If it is a walk-in the process calls `wait_for_cashier`. This helper function returns either a cashier if one became available before the patience timer expired, or `None` otherwise. This is done with the `any_of!` macro. If the function gives back `None` we abort the customer process right away. Otherwise the process waits for the order time interval, drops the acquired cashier, and then moves on to the priority queue for the preparation represented by the `Resource baristas`. If this process is an online customer it lines up with higher priority. The rest is as expected: We take milk from the `Container fridge` if the milk bollean is true. This might cause again extra waiting if the milk is out. We then wait the preparation timeout interval. When the process closes, the barista is released. The release of the barista as well as the cashier both happen implicitely when the corresponding guard variables go out of scope.
+
+
 
 ## 6. Same answers as SimPy, and how that's proven
 
