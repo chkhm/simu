@@ -44,6 +44,6 @@ fn main() {
     results.sort_by(f64::total_cmp);
     let mean = results.iter().sum::<f64>() / results.len() as f64;
     println!("average wait:   {mean:.1} min");
-    println!("best 5% of days: under {:.1} min", results[50]);
-    println!("worst 5% of days: over {:.1} min", results[950]);
+    println!("best 5% of hours: under {:.1} min", results[50]);
+    println!("worst 5% of hours: over {:.1} min", results[950]);
 }

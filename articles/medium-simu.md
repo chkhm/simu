@@ -30,7 +30,7 @@ TODO: Remove bullet points after checking correctness and completeness
   parameter sweeps, optimisation loops).
 - Concrete hook numbers (coffee-shop benchmark, `compare/REPORT.md`):
   - **One run with 1 million customers: SimPy 12.5 s, simu 0.68 s.**
-  - **1,000 simulated days (2,000 customers each): SimPy 25.1 s, simu 0.59 s
+  - **1,000 runs of 2,000 customers each: SimPy 25.1 s, simu 0.59 s
     on 10 cores (42.8×).**
 - Promise of the article: same modelling style, same random numbers, same
   answers, 12–18× faster on one core, up to ~43× with parallel runs. Plus: why
@@ -381,8 +381,8 @@ fn main() {
     results.sort_by(f64::total_cmp);
     let mean = results.iter().sum::<f64>() / results.len() as f64;
     println!("average wait:   {mean:.1} min");
-    println!("best 5% of days: under {:.1} min", results[50]);
-    println!("worst 5% of days: over {:.1} min", results[950]);
+    println!("best 5% of hours: under {:.1} min", results[50]);
+    println!("worst 5% of hours: over {:.1} min", results[950]);
 }
 ```
 
@@ -390,8 +390,8 @@ The output is the same on every run, because each seed fully determines its simu
 
 ```
 average wait:   3.9 min
-best 5% of days: under 0.6 min
-worst 5% of days: over 11.0 min
+best 5% of hours: under 0.6 min
+worst 5% of hours: over 11.0 min
 ```
 
 As you can see, the function `one_hour()` simulates one hour of operation of the coffee shop. It spawns an arrival process that loops until the simulation time reaches 60 time units. Within that loop we wait for a random time (on average 2.5 time units). Afterwards we spawn another process: the customer process. Within that process we wait for the barista resource to become available and store the customer's waiting time (the time from arrival until the barista became available) in the vector `waits`. Then we simulate the coffee preparation time, again by waiting for a random time of 2 time units on average. After 60 minutes no new customers arrive, but `env.run()` continues until the last waiting customer has been served. Then the `one_hour` function calculates the average waiting time of the customers stored in the vector `waits`.
@@ -471,9 +471,13 @@ The `main` function is responsible for triggering the Monte Carlo simulations wi
 
 `customer` implements the customer process outlined above: it first draws all required random values: order type (mobile vs. walk-in), order time, patience, preparation time, and whether the drink needs milk. If it is a walk-in the process calls `wait_for_cashier`. This helper function returns either a cashier if one became available before the patience timer expired, or `None` otherwise. This is done with the `any_of!` macro. If the function gives back `None` we abort the customer process right away. Otherwise the process waits for the order time, releases the cashier (its guard goes out of scope), and then lines up for a barista (`PriorityResource`): walk-ins with priority 0, mobile customers with priority 1. The rest is as expected: we take milk from the fridge (`Container`) if the drink needs milk. This might cause extra waiting if the milk has run out. We then wait for the preparation time. When the process ends, the barista is released. The release of the barista as well as of the cashier both happen implicitly when the corresponding guard variables go out of scope.
 
+This concludes the discussion of the coffee shop example. Take a look at the markdown file with more details in the github repository (TODO: add link).
+
+Next, let's take a look how we can compare this implementation against a simulator that uses Python and SimPy.
 
 ## 6. Same answers as SimPy, and how that's proven
 
+TODO: Remove after making sure everything is covered
 - Problem: "is it correct?" is the first question for any new simulator.
 - Method: a comparison harness (`compare/`) runs the *same model* in both engines.
   The SplitMix64 random generator and the distribution transforms are
@@ -485,6 +489,29 @@ The `main` function is responsible for triggering the Monte Carlo simulations wi
 - The coffee shop is the strongest proof point: reneging, priorities, and milk
   stockouts all interact, and every count still matches exactly (served 957.7,
   reneged 42.34 on average, 0 difference on every seed).
+
+In order to be able to compare an implementation in Python against an implementation in Rust with simu-des we need to make sure that they are doing the same thing. First of all, they both need to return the same output. For this to happen they need to use the same random number generator algorithm so that they use the same sequence of random numbers. Moreover, for a benchmark we need more flexibility: Instead of hard-coded parameters, we use a command line parser to get simulation parameters. And then of course, we need to make some small modifications to switch from Rust's built-in random number generator to a the aforementioned SplitMix64. The code for the updated coffee shop example is in github (TODO provide the link).
+
+The following figure shows the modifications in the code design.
+
+![Benchmark version of the coffee shop example](TODO add link)
+
+As you can see the functions are still the same structure but slightly renamed. Whereever there are changes to the original you see a small $delta$ triangle. The conceptual difference: we now do not run multiple different coffee shop configurations with differing numbers of baristas from the main function. We also do not terminate the simulation when a certain amount of simulated time is passed. Instead we are simulating the arrival and processing of a certain number of customers. This makes it easier to scale the benchmark runs.
+
+`run_coffee` is the function that simulates the coffee shop for one run (i.e. one seed). It kicks off the customer arrival process `arrival` as well as the milk refill process `restock`.
+
+`arrival` is the process that loops until all `n` customer arrivals have been simulated. Each customer is spawned as a process with a randomized timeout interval.
+
+`customer` finally does the same thing as the original coffee shop function (cashier, preparation, milk consumption, loosing patience). 
+
+The code also holds some additional variables for performance measurement.
+
+The Python 
+
+
+
+In the github reporsitory you find a complete test harness that compares the output of the two implementations (TODO: add link).
+
 
 | model | metric | simu | SimPy | max per-seed Δ |
 |---|---|---|---|---|
@@ -542,7 +569,7 @@ The `main` function is responsible for triggering the Monte Carlo simulations wi
 
 | workload | simu 1 core | simu 10 cores | SimPy | simu ‖ vs SimPy |
 |---|---|---|---|---|
-| coffee shop, 1,000 days × 2,000 customers | 1.52 s | 0.59 s | 25.1 s | **42.8×** |
+| coffee shop, 1,000 runs × 2,000 customers | 1.52 s | 0.59 s | 25.1 s | **42.8×** |
 | M/M/1, 300 runs × 4,000 customers | 0.53 s | 0.25 s | 6.3 s | **25.9×** |
 
 - Caveats to state (credibility):
