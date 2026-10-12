@@ -41,6 +41,7 @@ cargo run --example hospital      # ER patient-flow simulation
 cargo run --example brewery       # brewery / process-automation simulation
 cargo run --example warehouse     # distribution-center forklift-preemption simulation
 cargo run --example coffee_shop   # café staffing study (reneging, priority baristas, milk Container)
+cargo run --release --example coffee_shop_benchmark  # SimPy-comparable coffee model (SplitMix64, scalable)
 cargo bench                       # Criterion benchmark suite (benches/simulation.rs)
 cargo clippy -- -D warnings       # must stay warning-clean
 ```
@@ -78,7 +79,8 @@ simu/
 │   ├── hospital.rs  / hospital.md
 │   ├── brewery.rs   / brewery.md
 │   ├── warehouse.rs / warehouse.md
-│   ├── coffee_shop.rs / coffee_shop.md  # readable twin of the `coffee` parity benchmark
+│   ├── coffee_shop.rs / coffee_shop.md  # café showcase (StdRng, 8-hour days, staffing table)
+│   ├── coffee_shop_benchmark.rs / .md   # standalone copy of compare.rs's `coffee` model + differences
 │   └── compare.rs        # SimPy-parity harness runner (JSON contract; not a showcase — see compare/)
 ├── benches/
 │   └── simulation.rs     # Criterion benchmarks

@@ -103,10 +103,17 @@ Reading it:
 
 ## Relation to the benchmark
 
-`run_coffee` in `examples/compare.rs` is the same flow with three differences
-needed for an exact cross-engine comparison:
+The model that is compared against SimPy and timed in `compare/REPORT.md` is a
+benchmark version of this café: [`coffee_shop_benchmark.rs`](coffee_shop_benchmark.rs).
+It has the same flow, with a few changes needed for an exact cross-engine
+comparison and a scalable workload:
 - It uses the portable `SplitMix64` feed and the `rng::sample` transforms
   instead of `StdRng` + `rand_distr`.
-- It runs a fixed number of customers (`--n`) instead of an 8-hour day, so the
-  workload can scale from 1,000 to 1,000,000 customers.
-- It records per-customer metrics in the shared JSON contract.
+- It runs a fixed number of customers (`--customers`) instead of an 8-hour day,
+  so the workload can scale from 1,000 to 1,000,000 customers.
+- It runs one staffing level at a time and prints the metrics the SimPy twin
+  computes.
+
+[`coffee_shop_benchmark.md`](coffee_shop_benchmark.md) lists every difference and
+the reason for it. The same model also runs inside the comparison runner
+`examples/compare.rs` (`--model coffee`).

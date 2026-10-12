@@ -135,8 +135,16 @@ cargo run --example coffee_shop --release
 A café answering "how many baristas do we need?": cashiers (`Resource`), impatient walk-ins who
 leave the queue (`any_of!` against a patience timeout), baristas who serve walk-ins ahead of
 mobile orders (`PriorityResource`), and a milk fridge (`Container`). It runs 200 parallel days per
-staffing level. This is the readable twin of the `coffee` SimPy-parity benchmark. Walkthrough:
-[`examples/coffee_shop.md`](examples/coffee_shop.md).
+staffing level. Walkthrough: [`examples/coffee_shop.md`](examples/coffee_shop.md).
+
+```bash
+cargo run --example coffee_shop_benchmark --release
+```
+
+The same café as the model behind the SimPy comparison: portable `SplitMix64` randomness and a
+fixed number of customers (1k to 1M), so it matches the SimPy twin seed-by-seed and scales for
+benchmarks. [`examples/coffee_shop_benchmark.md`](examples/coffee_shop_benchmark.md) explains every
+difference from `coffee_shop.rs` and why.
 
 Beyond those, three end-to-end examples demonstrate every public primitive in different domains. All run 10
 parallel Monte Carlo simulations, write per-run logs, and print a summary table to stdout.

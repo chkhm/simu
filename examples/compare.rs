@@ -414,7 +414,8 @@ fn run_container(seed: u64, n: u64) -> String {
 // (prio 1), and milk drinks draw from a milk fridge (Container) that is topped
 // up every 30 minutes. Every random number is drawn at arrival in a fixed order,
 // so the draw sequence is independent of event order (exact-mode eligible).
-// Units are minutes. Shared with examples/coffee_shop.rs in spirit, not in code.
+// Units are minutes. A readable standalone copy of this model lives in
+// examples/coffee_shop_benchmark.rs (differences to the showcase: coffee_shop_benchmark.md).
 // ---------------------------------------------------------------------------
 
 const CF_MOBILE_P: f64 = 0.3;

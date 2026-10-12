@@ -472,7 +472,6 @@ The `main` function is responsible for triggering the Monte Carlo simulations wi
 `customer` implements the customer process outlined above: it first draws all required random values: order type (mobile vs. walk-in), order time, patience, preparation time, and whether the drink needs milk. If it is a walk-in the process calls `wait_for_cashier`. This helper function returns either a cashier if one became available before the patience timer expired, or `None` otherwise. This is done with the `any_of!` macro. If the function gives back `None` we abort the customer process right away. Otherwise the process waits for the order time, releases the cashier (its guard goes out of scope), and then lines up for a barista (`PriorityResource`): walk-ins with priority 0, mobile customers with priority 1. The rest is as expected: we take milk from the fridge (`Container`) if the drink needs milk. This might cause extra waiting if the milk has run out. We then wait for the preparation time. When the process ends, the barista is released. The release of the barista as well as of the cashier both happen implicitly when the corresponding guard variables go out of scope.
 
 
-
 ## 6. Same answers as SimPy, and how that's proven
 
 - Problem: "is it correct?" is the first question for any new simulator.

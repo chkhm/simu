@@ -88,7 +88,7 @@ Every run prints one line:
 | `mmc`       | `Resource(c)`              | (same) |
 | `priority`  | `PriorityResource`         | mean_wait_high / _low / _all |
 | `container` | `Container` (mixed sizes)  | mean_wait_all / _small / _large, served |
-| `coffee`    | `Resource` + `any_of!` reneging, `PriorityResource`, `Container` (`--servers` baristas; twin of `examples/coffee_shop.rs`) | served, reneged, mean_wait_cashier / _barista / _milk, mean_time_in_shop, barista_utilization |
+| `coffee`    | `Resource` + `any_of!` reneging, `PriorityResource`, `Container` (`--servers` baristas; standalone copy: `examples/coffee_shop_benchmark.rs`) | served, reneged, mean_wait_cashier / _barista / _milk, mean_time_in_shop, barista_utilization |
 | `hospital`  | port of `examples/hospital.rs` | the 8 hospital metrics |
 
 `events` uses an identical, model-specific definition on both sides (e.g. `2·N`
