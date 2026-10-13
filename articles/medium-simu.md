@@ -506,11 +506,10 @@ As you can see the functions are still the same structure but slightly renamed. 
 
 The code also holds some additional variables for performance measurement.
 
-The Python 
 
 
 
-In the github reporsitory you find a complete test harness that compares the output of the two implementations (TODO: add link).
+
 
 
 | model | metric | simu | SimPy | max per-seed Δ |
