@@ -22,20 +22,34 @@ Python harness. That makes the coffee model hard to read in isolation.
 - **Readable output instead of JSON:** the metrics are printed as a summary,
   with wall time and events per second.
 
-Its SimPy twin is `compare/models/coffee.py`. For the same seed, all three
-programs produce the same numbers:
+## The SimPy twin
+
+The same model in Python/SimPy has two copies, mirroring the Rust side:
+
+- `compare/models/coffee.py` is the version the comparison harness runs (JSON
+  output, shared command-line code, random generator imported from `_feed.py`).
+- [`compare/standalone/coffee_shop_benchmark.py`](../compare/standalone/coffee_shop_benchmark.py)
+  is a standalone, readable copy for humans. It contains the SplitMix64
+  generator and its two sampling transforms in the same file, so you can see
+  where every random number comes from, and it has the same command line and
+  output as the Rust example. It only needs `pip install simpy`.
+
+Run the two readable versions side by side:
 
 ```bash
 cargo run --release --example coffee_shop_benchmark -- --customers 2000
 ```
 
 ```bash
-cd compare/models && ../.venv/bin/python coffee.py --seeds 1 --n 2000 --lambda 1.7 --mu 0.5 --servers 4
+python3 compare/standalone/coffee_shop_benchmark.py --customers 2000
 ```
 
-Both report, for seed 0: 1,917 served, 83 walk-outs, mean time in shop
-4.074548 minutes, and identical values for every other metric (the last
-digits differ at most by floating-point rounding, about 1e-15).
+Both print, for seed 0: 1,917 served, 83 walk-outs, mean time in shop
+4.074548 minutes, and identical values for every other metric. Everything
+except the final wall-time line is the same, character for character. The
+Python version has no `--parallel` option: CPython's global interpreter lock
+prevents running replications on several threads, so they always run one
+after another.
 
 ## What is the same
 

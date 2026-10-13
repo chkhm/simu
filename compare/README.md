@@ -37,6 +37,9 @@ compare/
 │   ├── test_feed.py          # cross-language known-answer test (shared with Rust)
 │   ├── queue_model.py        # shared M/M/c logic
 │   ├── mm1.py  mmc.py  priority_queue.py  container.py  coffee.py  hospital.py
+├── standalone/
+│   └── coffee_shop_benchmark.py  # readable, self-contained copy of coffee.py (feed inlined,
+│                                 # same CLI/output as examples/coffee_shop_benchmark.rs)
 ├── harness/
 │   ├── contract.py           # subprocess runners + result schema + RSS/timing
 │   ├── run_correctness.py    # exact (per-seed) + distribution tests + Erlang-C ground truth
